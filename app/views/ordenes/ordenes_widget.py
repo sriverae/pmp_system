@@ -11,6 +11,7 @@ from PySide6.QtGui import QColor
 
 from app.views.shared.tabla_base import TablaBase
 from app.services.ot_service import OTService
+from app.services.plan_service import PlanService
 from app.core.session import session_usuario
 from app.views.shared.styles import (
     COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_ACCENT_BLUE,
@@ -59,7 +60,7 @@ class OrdenesWidget(QWidget):
         self.combo_estado = QComboBox()
         self.combo_estado.addItems(
             ["Todos", "Borrador", "Programada", "Liberada",
-             "En proceso", "Cerrada", "Anulada"])
+             "En proceso", "Cerrada", "Anulada", "No programada"])
         self.combo_estado.setFixedWidth(120)
         self.combo_estado.currentIndexChanged.connect(self.cargar_datos)
 
@@ -222,6 +223,12 @@ class OrdenesWidget(QWidget):
             filtros["estado"] = "Cerrada"
 
         ots = OTService.listar_ots(filtros)
+        incluir_no_programadas = estado in ("Todos", "No programada")
+        planes_no_programados = []
+        if incluir_no_programadas:
+            planes_no_programados = PlanService.obtener_planes_no_programados(
+                filtros["fecha_desde"], filtros["fecha_hasta"]
+            )
 
         datos = []
         ids = []
@@ -244,8 +251,24 @@ class OrdenesWidget(QWidget):
             })
             ids.append(ot.id)
 
+        for p in planes_no_programados:
+            datos.append({
+                "numero": f"PLAN-{p['codigo_plan']}",
+                "tipo_ot": p["tipo_ot"],
+                "equipo": p["equipo"],
+                "fecha_prog": p["fecha_programada"].strftime("%d/%m/%Y") if p["fecha_programada"] else "-",
+                "hora_ini": "-",
+                "hora_fin": "-",
+                "prioridad": p["prioridad"],
+                "responsable": "-",
+                "estado": "No programada",
+                "costo_total": "-",
+            })
+            ids.append(0)
+
         self.tabla.cargar(datos, ids)
-        self.lbl_conteo.setText(f"{len(ots)} OT(s)")
+        self.lbl_conteo.setText(
+            f"{len(ots)} OT(s) + {len(planes_no_programados)} No programada(s)")
 
     def _on_seleccion(self, ot_id: int):
         pass  # Se puede mostrar un panel de detalle lateral

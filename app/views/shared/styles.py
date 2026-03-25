@@ -482,6 +482,7 @@ COLORES_ESTADO_TABLA = {
     "Vencida":   ("#B71C1C", "#FFEBEE"),   # rojo
     "Dado de baja": ("#B71C1C", "#FFEBEE"),
     "Programada": ("#1a2332", "#E3F2FD"),  # neutro
+    "No programada": ("#6D4C41", "#EFEBE9"),
     "Borrador":  ("#263238", "#ECEFF1"),
     "Anulada":   ("#37474F", "#ECEFF1"),
     "Pausado":   ("#4A148C", "#F3E5F5"),

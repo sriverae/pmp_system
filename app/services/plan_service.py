@@ -424,3 +424,45 @@ class PlanService:
             return res
         finally:
             session.close()
+
+    @staticmethod
+    def obtener_planes_no_programados(fecha_desde: datetime, fecha_hasta: datetime) -> List[dict]:
+        """
+        Planes activos con próxima ejecución en rango que aún no tienen OT
+        programada/liberada/en proceso para esa fecha.
+        """
+        session = get_session()
+        try:
+            planes = (session.query(PlanMantenimiento)
+                      .options(joinedload(PlanMantenimiento.equipo))
+                      .filter(
+                          PlanMantenimiento.estado == "Activo",
+                          PlanMantenimiento.proxima_ejecucion.isnot(None),
+                          PlanMantenimiento.proxima_ejecucion >= fecha_desde,
+                          PlanMantenimiento.proxima_ejecucion <= fecha_hasta
+                      )
+                      .order_by(PlanMantenimiento.proxima_ejecucion.asc())
+                      .all())
+            res = []
+            for p in planes:
+                existente = (session.query(OrdenTrabajo.id)
+                             .filter(
+                                 OrdenTrabajo.plan_id == p.id,
+                                 OrdenTrabajo.estado.in_(["Programada", "Liberada", "En proceso"]),
+                                 OrdenTrabajo.fecha_programada.isnot(None)
+                             )
+                             .order_by(OrdenTrabajo.fecha_programada.desc())
+                             .first())
+                if existente:
+                    continue
+                res.append({
+                    "plan_id": p.id,
+                    "codigo_plan": p.codigo,
+                    "equipo": p.equipo.nombre if p.equipo else "-",
+                    "tipo_ot": p.tipo_mantenimiento,
+                    "fecha_programada": p.proxima_ejecucion,
+                    "prioridad": p.prioridad,
+                })
+            return res
+        finally:
+            session.close()
