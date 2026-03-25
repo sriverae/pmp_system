@@ -30,6 +30,7 @@ class PlanMantenimiento(Base):
     fecha_fin = Column(Date, nullable=True)
     ultima_ejecucion = Column(DateTime, nullable=True)
     proxima_ejecucion = Column(DateTime, nullable=True)
+    alerta_dias_anticipacion = Column(Integer, default=7)
     estado = Column(String(30), default="Activo")
     # Estados: Activo / Pausado / Cerrado
     fecha_creacion = Column(DateTime, default=func.now())
