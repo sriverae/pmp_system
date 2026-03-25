@@ -1,24 +1,24 @@
 """
-Estilos globales QSS — Tema "Midnight Slate" PMP.
-Paleta: grafito, azul petróleo y acentos modernos.
+Estilos globales QSS — Tema "Aurora Graphite" PMP.
+Paleta moderna: grafito profundo + acentos cian/violeta/esmeralda.
 """
 
 # Colores principales
-COLOR_BG_DARK = "#0f172a"
-COLOR_BG_MEDIUM = "#111c33"
-COLOR_BG_LIGHT = "#16223d"
-COLOR_BG_PANEL = "#1b2a4a"
-COLOR_ACCENT_BLUE = "#38bdf8"
-COLOR_ACCENT_BLUE_DARK = "#0284c7"
-COLOR_TEXT_PRIMARY = "#e2e8f0"
-COLOR_TEXT_SECONDARY = "#94a3b8"
-COLOR_BORDER = "#2f4566"
+COLOR_BG_DARK = "#0B1020"
+COLOR_BG_MEDIUM = "#121A2F"
+COLOR_BG_LIGHT = "#1A2542"
+COLOR_BG_PANEL = "#1E2B4D"
+COLOR_ACCENT_BLUE = "#5EEAD4"
+COLOR_ACCENT_BLUE_DARK = "#14B8A6"
+COLOR_TEXT_PRIMARY = "#E6EDF7"
+COLOR_TEXT_SECONDARY = "#9FB0CC"
+COLOR_BORDER = "#2D3E68"
 
 # Colores de estado
-COLOR_SUCCESS = "#4CAF50"    # Verde — correcto / disponible / cerrado
-COLOR_WARNING = "#FF9800"    # Amarillo — advertencia / próximo vencimiento
-COLOR_DANGER = "#F44336"     # Rojo — conflicto / crítico / vencido
-COLOR_INFO = "#2196F3"       # Azul — informativo
+COLOR_SUCCESS = "#22C55E"    # Verde moderno
+COLOR_WARNING = "#F59E0B"    # Ámbar moderno
+COLOR_DANGER = "#F43F5E"     # Rosa/rojo moderno
+COLOR_INFO = "#38BDF8"       # Cian/azul moderno
 
 STYLESHEET_GLOBAL = f"""
 /* ===========================================================
@@ -49,7 +49,8 @@ QMenuBar::item {{
     border-radius: 3px;
 }}
 QMenuBar::item:selected {{
-    background-color: {COLOR_ACCENT_BLUE};
+    background-color: #2A3C66;
+    color: #D7FDF6;
 }}
 QMenu {{
     background-color: {COLOR_BG_PANEL};
@@ -62,7 +63,8 @@ QMenu::item {{
     border-radius: 2px;
 }}
 QMenu::item:selected {{
-    background-color: {COLOR_ACCENT_BLUE};
+    background-color: #2A3C66;
+    color: #D7FDF6;
 }}
 QMenu::separator {{
     height: 1px;
@@ -88,8 +90,8 @@ QToolButton {{
     font-size: 12px;
 }}
 QToolButton:hover {{
-    background-color: {COLOR_BG_PANEL};
-    border-color: {COLOR_ACCENT_BLUE};
+    background-color: #23345D;
+    border-color: {COLOR_ACCENT_BLUE_DARK};
 }}
 QToolButton:pressed {{
     background-color: {COLOR_ACCENT_BLUE};
@@ -108,7 +110,7 @@ QPushButton {{
     min-height: 30px;
 }}
 QPushButton:hover {{
-    background-color: #1f3a63;
+    background-color: #243A68;
     border-color: {COLOR_ACCENT_BLUE_DARK};
 }}
 QPushButton:pressed {{
@@ -122,23 +124,25 @@ QPushButton:disabled {{
 
 QPushButton#btn_primary {{
     background-color: {COLOR_ACCENT_BLUE};
-    border-color: {COLOR_ACCENT_BLUE};
-    font-weight: 600;
+    border-color: {COLOR_ACCENT_BLUE_DARK};
+    color: #06231F;
+    font-weight: 700;
 }}
 QPushButton#btn_primary:hover {{
-    background-color: #42A5F5;
+    background-color: #99F6E4;
 }}
 
 QPushButton#btn_success {{
-    background-color: #2E7D32;
-    border-color: #388E3C;
+    background-color: #166534;
+    border-color: #22C55E;
 }}
 QPushButton#btn_success:hover {{
-    background-color: {COLOR_SUCCESS};
+    background-color: #22C55E;
+    color: #06220F;
 }}
 
 QPushButton#btn_danger {{
-    background-color: #C62828;
+    background-color: #9F1239;
     border-color: {COLOR_DANGER};
 }}
 QPushButton#btn_danger:hover {{
@@ -146,9 +150,9 @@ QPushButton#btn_danger:hover {{
 }}
 
 QPushButton#btn_warning {{
-    background-color: #E65100;
+    background-color: #B45309;
     border-color: {COLOR_WARNING};
-    color: white;
+    color: #FFF8EB;
 }}
 
 /* ===========================================================
@@ -216,7 +220,7 @@ QTableWidget::item:selected {{
     color: white;
 }}
 QHeaderView::section {{
-    background-color: #223459;
+    background-color: #263965;
     color: {COLOR_TEXT_PRIMARY};
     border: none;
     border-right: 1px solid {COLOR_BORDER};
@@ -228,7 +232,7 @@ QHeaderView::section {{
     letter-spacing: 0.5px;
 }}
 QHeaderView::section:hover {{
-    background-color: {COLOR_ACCENT_BLUE};
+    background-color: #35508B;
 }}
 
 /* ===========================================================
@@ -251,7 +255,7 @@ QTabBar::tab {{
 QTabBar::tab:selected {{
     background-color: {COLOR_BG_MEDIUM};
     color: {COLOR_TEXT_PRIMARY};
-    border-bottom: 2px solid {COLOR_ACCENT_BLUE};
+    border-bottom: 2px solid #8B5CF6;
 }}
 QTabBar::tab:hover {{
     background-color: {COLOR_BG_LIGHT};
@@ -272,7 +276,7 @@ QScrollBar::handle:vertical {{
     min-height: 30px;
 }}
 QScrollBar::handle:vertical:hover {{
-    background-color: {COLOR_ACCENT_BLUE};
+    background-color: #8B5CF6;
 }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0px;
@@ -305,7 +309,7 @@ QLabel#label_subtitulo {{
 QLabel#kpi_valor {{
     font-size: 28px;
     font-weight: 700;
-    color: {COLOR_ACCENT_BLUE};
+    color: #A78BFA;
 }}
 QLabel#kpi_titulo {{
     font-size: 11px;
