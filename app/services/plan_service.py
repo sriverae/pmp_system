@@ -10,7 +10,7 @@ from app.core.database import get_session
 from app.core.session import session_usuario
 from app.models.plan import PlanMantenimiento, ChecklistPlan, PlanMaterial
 from app.models.orden_trabajo import OrdenTrabajo, OTMaterialPrevisto
-from app.models.equipo import Equipo
+from app.models.equipo import Equipo, LecturaContador
 from app.services.auditoria_service import AuditoriaService
 from app.services.ot_service import OTService
 
@@ -349,5 +349,78 @@ class PlanService:
                         "prioridad": p.prioridad,
                     })
             return alertas
+        finally:
+            session.close()
+
+    @staticmethod
+    def registrar_lectura_diaria(equipo_id: int, lectura: float, observaciones: str = "") -> Tuple[bool, str]:
+        """Registra lectura diaria de horómetro/km y actualiza el equipo."""
+        session = get_session()
+        try:
+            eq = session.query(Equipo).get(equipo_id)
+            if not eq:
+                return False, "Equipo no encontrado."
+            lectura = float(lectura)
+            if lectura < 0:
+                return False, "La lectura no puede ser negativa."
+
+            session.add(LecturaContador(
+                equipo_id=equipo_id,
+                lectura=lectura,
+                usuario_id=session_usuario.usuario_id,
+                observaciones=observaciones or "Lectura diaria"
+            ))
+            eq.lectura_actual = lectura
+            session.commit()
+            return True, f"Lectura registrada para {eq.codigo}: {lectura:.2f}"
+        except Exception as e:
+            session.rollback()
+            return False, str(e)
+        finally:
+            session.close()
+
+    @staticmethod
+    def obtener_estado_planes_contador(uso_diario_default: float = 8.0) -> List[dict]:
+        """
+        Retorna el estado de planes por contador (hrs/km) con faltante y
+        días estimados para mantenimiento.
+        """
+        session = get_session()
+        try:
+            planes = (session.query(PlanMantenimiento)
+                      .options(joinedload(PlanMantenimiento.equipo))
+                      .filter(
+                          PlanMantenimiento.estado == "Activo",
+                          PlanMantenimiento.criterio.in_(["Contador", "Ambos"])
+                      )
+                      .order_by(PlanMantenimiento.codigo.asc())
+                      .all())
+            res = []
+            for p in planes:
+                eq = p.equipo
+                if not eq:
+                    continue
+                lectura_actual = float(eq.lectura_actual or 0)
+                frecuencia = float(p.frecuencia or 0)
+                if frecuencia <= 0:
+                    continue
+                ciclo_actual = int(lectura_actual // frecuencia)
+                meta_siguiente = (ciclo_actual + 1) * frecuencia
+                faltante = max(0.0, meta_siguiente - lectura_actual)
+                uso_diario = max(0.1, float(uso_diario_default or 8.0))
+                dias_estimados = faltante / uso_diario
+                res.append({
+                    "plan_id": p.id,
+                    "codigo": p.codigo,
+                    "equipo_id": eq.id,
+                    "equipo": eq.nombre,
+                    "tipo_contador": eq.tipo_contador or "Hra/Km",
+                    "lectura_actual": lectura_actual,
+                    "meta_siguiente": meta_siguiente,
+                    "faltante": faltante,
+                    "dias_estimados": dias_estimados,
+                    "prioridad": p.prioridad,
+                })
+            return res
         finally:
             session.close()

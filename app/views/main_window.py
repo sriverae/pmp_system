@@ -6,7 +6,7 @@ panel central dinámico y barra de estado.
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QStackedWidget, QToolBar,
     QStatusBar, QLabel, QSizePolicy, QMessageBox, QVBoxLayout,
-    QFileDialog, QApplication
+    QFileDialog, QApplication, QInputDialog
 )
 from PySide6.QtCore import Qt, QTimer, QSize
 from PySide6.QtGui import QAction, QIcon, QFont
@@ -364,10 +364,65 @@ class MainWindow(QMainWindow):
             widget.restaurar_backup()
 
     def _importar_excel(self):
-        QMessageBox.information(
-            self, "Importar Excel",
-            "Use el botón 'Importar' dentro del módulo correspondiente\n"
-            "(Equipos, Materiales, RRHH, Planes).")
+        from app.services.bulk_import_service import BulkImportService
+
+        modulos = [
+            ("Equipos", "equipos"),
+            ("RRHH", "rrhh"),
+            ("Materiales", "materiales"),
+            ("Planes", "planes"),
+            ("Órdenes de trabajo", "ots"),
+        ]
+        etiqueta, ok = QInputDialog.getItem(
+            self,
+            "Importación masiva",
+            "Seleccione el módulo a importar:",
+            [m[0] for m in modulos],
+            0,
+            False
+        )
+        if not ok:
+            return
+        modulo = dict(modulos)[etiqueta]
+
+        accion, ok = QInputDialog.getItem(
+            self,
+            "Importación masiva",
+            "Acción:",
+            ["Importar desde Excel", "Descargar plantilla"],
+            0,
+            False
+        )
+        if not ok:
+            return
+
+        if accion == "Descargar plantilla":
+            ruta, _ = QFileDialog.getSaveFileName(
+                self, "Guardar plantilla", f"plantilla_{modulo}.xlsx", "Excel (*.xlsx)")
+            if not ruta:
+                return
+            ok_t, msg = BulkImportService.exportar_plantilla(modulo, ruta)
+            (QMessageBox.information if ok_t else QMessageBox.critical)(
+                self, "Plantilla", msg
+            )
+            return
+
+        ruta, _ = QFileDialog.getOpenFileName(
+            self, "Seleccionar archivo Excel", "", "Excel (*.xlsx *.xls)")
+        if not ruta:
+            return
+        ok_i, resultado = BulkImportService.importar_excel(modulo, ruta)
+        resumen = (
+            f"Insertados: {resultado.insertados}\n"
+            f"Actualizados: {resultado.actualizados}\n"
+            f"Omitidos: {resultado.omitidos}\n"
+            f"Errores: {resultado.errores}"
+        )
+        if resultado.detalle_errores:
+            resumen += "\n\nDetalle (primeros 8):\n" + "\n".join(resultado.detalle_errores[:8])
+        (QMessageBox.information if ok_i else QMessageBox.warning)(
+            self, "Importación masiva", resumen
+        )
 
     def _exportar_datos(self):
         self._mostrar_modulo("reportes")

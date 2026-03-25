@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QFrame, QComboBox, QTableWidget,
     QTableWidgetItem, QHeaderView, QSizePolicy,
-    QGridLayout, QScrollArea, QMessageBox, QDialog
+    QGridLayout, QScrollArea, QMessageBox, QDialog, QInputDialog
 )
 from PySide6.QtCore import Qt, QDate, QTimer
 from PySide6.QtGui import QColor, QFont
@@ -51,6 +51,7 @@ class CalendarioWidget(QWidget):
         self._mes   = hoy.month
         self._ots_mes = []
         self._planes_mes = []
+        self._uso_diario_estimado = 8.0
         self._construir_ui()
         QTimer.singleShot(100, self.cargar_mes)
 
@@ -86,9 +87,12 @@ class CalendarioWidget(QWidget):
         btn_hoy.clicked.connect(self._ir_hoy)
 
         self.combo_vista = QComboBox()
-        self.combo_vista.addItems(["Vista Mensual","Vista Semanal","Lista"])
-        self.combo_vista.setFixedWidth(130)
+        self.combo_vista.addItems(["Plan PM - Fechas", "Plan PM - Hra/Km", "Lista OTs/Planes", "Vista Semanal"])
+        self.combo_vista.setFixedWidth(170)
         self.combo_vista.currentIndexChanged.connect(self._cambiar_vista)
+        btn_lectura = QPushButton("Registrar horómetro")
+        btn_lectura.setFixedHeight(30)
+        btn_lectura.clicked.connect(self._registrar_lectura)
         btn_alertas = QPushButton("Alertas proximas")
         btn_alertas.setFixedHeight(30)
         btn_alertas.clicked.connect(self._mostrar_alertas)
@@ -100,6 +104,7 @@ class CalendarioWidget(QWidget):
         enc.addWidget(btn_sig)
         enc.addWidget(btn_hoy)
         enc.addWidget(self.combo_vista)
+        enc.addWidget(btn_lectura)
         enc.addWidget(btn_alertas)
         lay.addLayout(enc)
 
@@ -229,8 +234,10 @@ class CalendarioWidget(QWidget):
             self._planes_mes = []
 
         vista = self.combo_vista.currentText()
-        if vista == "Vista Mensual":
+        if vista == "Plan PM - Fechas":
             self._render_mensual(primer_dia, ultimo_dia_n)
+        elif vista == "Plan PM - Hra/Km":
+            self._render_horometro()
         elif vista == "Vista Semanal":
             self._render_semanal()
         else:
@@ -579,3 +586,75 @@ class CalendarioWidget(QWidget):
         cerrar.clicked.connect(dlg.accept)
         lay.addWidget(cerrar, alignment=Qt.AlignmentFlag.AlignRight)
         dlg.exec()
+
+    def _registrar_lectura(self):
+        from app.services.equipo_service import EquipoService
+        equipos = EquipoService.listar(solo_activos=True)
+        if not equipos:
+            QMessageBox.information(self, "Lecturas", "No hay equipos activos.")
+            return
+        opciones = [f"{e.codigo} - {e.nombre}" for e in equipos]
+        sel, ok = QInputDialog.getItem(
+            self, "Registrar horómetro/km", "Equipo:", opciones, 0, False
+        )
+        if not ok:
+            return
+        eq = equipos[opciones.index(sel)]
+        lectura, ok = QInputDialog.getDouble(
+            self,
+            "Registrar lectura",
+            f"Lectura actual para {eq.codigo}:",
+            float(eq.lectura_actual or 0),
+            0,
+            999999999,
+            2
+        )
+        if not ok:
+            return
+        ok_s, msg = PlanService.registrar_lectura_diaria(eq.id, lectura)
+        (QMessageBox.information if ok_s else QMessageBox.critical)(self, "Lecturas", msg)
+        if ok_s:
+            self.cargar_mes()
+
+    def _render_horometro(self):
+        while self._lay_cal.count():
+            item = self._lay_cal.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        tabla = QTableWidget(0, 9)
+        tabla.setHorizontalHeaderLabels([
+            "Plan", "Equipo", "Tipo contador", "Lectura actual",
+            "Meta siguiente", "Faltante", "Días estimados",
+            "Prioridad", "Estado"
+        ])
+        tabla.horizontalHeader().setStretchLastSection(True)
+        tabla.verticalHeader().setVisible(False)
+        tabla.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        tabla.setAlternatingRowColors(True)
+        for i, w in enumerate([90, 170, 110, 100, 100, 90, 95, 80]):
+            tabla.setColumnWidth(i, w)
+
+        rows = PlanService.obtener_estado_planes_contador(self._uso_diario_estimado)
+        for d in rows:
+            r = tabla.rowCount()
+            tabla.insertRow(r)
+            estado = "ALERTA" if d["dias_estimados"] <= 3 else ("Próximo" if d["dias_estimados"] <= 7 else "Normal")
+            vals = [
+                d["codigo"], d["equipo"], d["tipo_contador"],
+                f"{d['lectura_actual']:.2f}", f"{d['meta_siguiente']:.2f}",
+                f"{d['faltante']:.2f}", f"{d['dias_estimados']:.1f}",
+                d["prioridad"], estado
+            ]
+            for c, v in enumerate(vals):
+                it = QTableWidgetItem(v)
+                if c == 8:
+                    color = COLOR_DANGER if estado == "ALERTA" else COLOR_WARNING if estado == "Próximo" else COLOR_SUCCESS
+                    it.setForeground(QColor(color))
+                    fnt = QFont(); fnt.setBold(True); it.setFont(fnt)
+                tabla.setItem(r, c, it)
+
+        lbl = QLabel("Modo Hra/Km: registra lecturas diarias para actualizar faltantes y días estimados.")
+        lbl.setStyleSheet(f"color:{COLOR_TEXT_SECONDARY}; font-size:12px;")
+        self._lay_cal.addWidget(lbl)
+        self._lay_cal.addWidget(tabla)
