@@ -5,7 +5,7 @@ panel central dinámico y barra de estado.
 """
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QStackedWidget, QToolBar,
-    QStatusBar, QLabel, QSizePolicy, QMessageBox,
+    QStatusBar, QLabel, QSizePolicy, QMessageBox, QVBoxLayout,
     QFileDialog, QApplication
 )
 from PySide6.QtCore import Qt, QTimer, QSize
@@ -142,7 +142,7 @@ class MainWindow(QMainWindow):
         botones = [
             ("[Nuevo] Nueva OT",      lambda: self._nueva_ot_rapida()),
             ("[Plan] Planes",         lambda: self._mostrar_modulo("planes")),
-            ("[OT] Equipos",        lambda: self._mostrar_modulo("equipos")),
+            ("[Eq] Equipos",          lambda: self._mostrar_modulo("equipos")),
             ("[Mat] Materiales",     lambda: self._mostrar_modulo("materiales")),
             ("[RRHH] RRHH",           lambda: self._mostrar_modulo("rrhh")),
             ("[Cal] Calendario",     lambda: self._mostrar_modulo("calendario")),

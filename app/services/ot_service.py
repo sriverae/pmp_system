@@ -4,6 +4,7 @@ Toda la lógica de negocio de OTs: crear, liberar, iniciar, cerrar, anular.
 """
 from datetime import datetime
 from typing import List, Optional, Tuple
+from sqlalchemy.orm import joinedload
 
 from app.core.database import get_session
 from app.core.session import session_usuario
@@ -352,7 +353,11 @@ class OTService:
         """Lista OTs con filtros opcionales."""
         session = get_session()
         try:
-            q = session.query(OrdenTrabajo)
+            q = (session.query(OrdenTrabajo)
+                 .options(
+                     joinedload(OrdenTrabajo.equipo),
+                     joinedload(OrdenTrabajo.responsable),
+                 ))
             if filtros:
                 if filtros.get("estado"):
                     q = q.filter(OrdenTrabajo.estado == filtros["estado"])
