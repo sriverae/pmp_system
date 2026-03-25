@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QFrame, QComboBox, QTableWidget,
     QTableWidgetItem, QHeaderView, QSizePolicy,
-    QGridLayout, QScrollArea, QMessageBox
+    QGridLayout, QScrollArea, QMessageBox, QDialog
 )
 from PySide6.QtCore import Qt, QDate, QTimer
 from PySide6.QtGui import QColor, QFont
@@ -50,6 +50,7 @@ class CalendarioWidget(QWidget):
         self._anio  = hoy.year
         self._mes   = hoy.month
         self._ots_mes = []
+        self._planes_mes = []
         self._construir_ui()
         QTimer.singleShot(100, self.cargar_mes)
 
@@ -88,6 +89,9 @@ class CalendarioWidget(QWidget):
         self.combo_vista.addItems(["Vista Mensual","Vista Semanal","Lista"])
         self.combo_vista.setFixedWidth(130)
         self.combo_vista.currentIndexChanged.connect(self._cambiar_vista)
+        btn_alertas = QPushButton("Alertas proximas")
+        btn_alertas.setFixedHeight(30)
+        btn_alertas.clicked.connect(self._mostrar_alertas)
 
         enc.addWidget(lbl)
         enc.addStretch()
@@ -96,6 +100,7 @@ class CalendarioWidget(QWidget):
         enc.addWidget(btn_sig)
         enc.addWidget(btn_hoy)
         enc.addWidget(self.combo_vista)
+        enc.addWidget(btn_alertas)
         lay.addLayout(enc)
 
         # Leyenda
@@ -213,6 +218,15 @@ class CalendarioWidget(QWidget):
         except Exception as e:
             print(f"[Calendario] Error cargando OTs: {e}")
             self._ots_mes = []
+        try:
+            planes = PlanService.listar(estado="Activo")
+            self._planes_mes = [
+                p for p in planes
+                if p.proxima_ejecucion
+                and primer_dia <= p.proxima_ejecucion <= ultimo_dia
+            ]
+        except Exception:
+            self._planes_mes = []
 
         vista = self.combo_vista.currentText()
         if vista == "Vista Mensual":
@@ -252,7 +266,10 @@ class CalendarioWidget(QWidget):
         for ot in self._ots_mes:
             if ot.fecha_programada:
                 d = ot.fecha_programada.day
-                mapa.setdefault(d, []).append(ot)
+                mapa.setdefault(d, []).append(("ot", ot))
+        for plan in self._planes_mes:
+            d = plan.proxima_ejecucion.day
+            mapa.setdefault(d, []).append(("plan", plan))
 
         hoy = datetime.now()
         # Semana en que empieza el mes (0=lunes)
@@ -277,8 +294,8 @@ class CalendarioWidget(QWidget):
                     continue
 
                 es_hoy = (hoy.year==self._anio and hoy.month==self._mes and hoy.day==dia_num)
-                ots_dia = mapa.get(dia_num, [])
-                cel = self._celda_dia(dia_num, ots_dia, es_hoy)
+                eventos_dia = mapa.get(dia_num, [])
+                cel = self._celda_dia(dia_num, eventos_dia, es_hoy)
                 grid.addWidget(cel, row, col)
                 dia_num += 1
 
@@ -291,7 +308,7 @@ class CalendarioWidget(QWidget):
         self._lay_cal.addWidget(wrapper)
         self._lay_cal.addStretch()
 
-    def _celda_dia(self, dia: int, ots: list, es_hoy: bool) -> QFrame:
+    def _celda_dia(self, dia: int, eventos: list, es_hoy: bool) -> QFrame:
         f = QFrame()
         f.setMinimumHeight(80)
         f.setMaximumHeight(110)
@@ -312,19 +329,28 @@ class CalendarioWidget(QWidget):
             f"color:{'white' if es_hoy else COLOR_TEXT_SECONDARY}; border:none;")
         lay.addWidget(lbl_d)
 
-        for ot in ots[:3]:
-            color = COL_TIPO.get(ot.tipo_ot, COLOR_ACCENT_BLUE)
-            lbl_ot = QLabel(f"{ot.numero[:10]}")
-            lbl_ot.setStyleSheet(
+        for tipo_evento, item in eventos[:3]:
+            if tipo_evento == "ot":
+                color = COL_TIPO.get(item.tipo_ot, COLOR_ACCENT_BLUE)
+                texto = item.numero[:12]
+                tip = f"{item.numero} - {item.tipo_ot}\nEstado: {item.estado}"
+            else:
+                color = "#8B5CF6"
+                texto = f"PLAN {item.codigo[:8]}"
+                tip = (
+                    f"Plan: {item.codigo}\n"
+                    f"Tipo: {item.tipo_mantenimiento}\n"
+                    f"Alerta: {int(item.alerta_dias_anticipacion or 7)} dia(s)"
+                )
+            lbl_e = QLabel(texto)
+            lbl_e.setStyleSheet(
                 f"background-color:{color}; color:white; border-radius:2px; "
                 f"padding:1px 4px; font-size:10px; font-weight:600; border:none;")
-            lbl_ot.setToolTip(
-                f"{ot.numero} - {ot.tipo_ot}\n"
-                f"Estado: {ot.estado}")
-            lay.addWidget(lbl_ot)
+            lbl_e.setToolTip(tip)
+            lay.addWidget(lbl_e)
 
-        if len(ots) > 3:
-            lbl_m = QLabel(f"+{len(ots)-3} mas")
+        if len(eventos) > 3:
+            lbl_m = QLabel(f"+{len(eventos)-3} mas")
             lbl_m.setStyleSheet(
                 f"color:{COLOR_TEXT_SECONDARY}; font-size:10px; border:none;")
             lay.addWidget(lbl_m)
@@ -332,25 +358,30 @@ class CalendarioWidget(QWidget):
         lay.addStretch()
 
         # Click para ver OTs del dia
-        f.mousePressEvent = lambda e, d=dia, o=ots: self._click_dia(d, o)
+        f.mousePressEvent = lambda e, d=dia, ev=eventos: self._click_dia(d, ev)
         return f
 
-    def _click_dia(self, dia: int, ots: list):
+    def _click_dia(self, dia: int, eventos: list):
         fecha_str = f"{dia:02d}/{self._mes:02d}/{self._anio}"
-        self.lbl_dia_sel.setText(f"Fecha: {fecha_str} ({len(ots)} OT(s))")
+        total_ots = sum(1 for t, _ in eventos if t == "ot")
+        total_planes = sum(1 for t, _ in eventos if t == "plan")
+        self.lbl_dia_sel.setText(
+            f"Fecha: {fecha_str} ({total_ots} OT(s), {total_planes} plan(es))")
         self.tabla_dia.setRowCount(0)
-        for ot in ots:
+        for tipo_evento, evento in eventos:
+            if tipo_evento != "ot":
+                continue
             r = self.tabla_dia.rowCount()
             self.tabla_dia.insertRow(r)
-            try: eq = ot.equipo.nombre[:14] if ot.equipo else "-"
+            try: eq = evento.equipo.nombre[:14] if evento.equipo else "-"
             except: eq = "-"
-            for c, v in enumerate([ot.numero, eq, ot.estado]):
-                item = QTableWidgetItem(v)
+            for c, v in enumerate([evento.numero, eq, evento.estado]):
+                cell = QTableWidgetItem(v)
                 if c == 2:
-                    col = COL_ESTADO.get(ot.estado, "#FFF")
-                    item.setForeground(QColor(col))
-                    f2 = QFont(); f2.setBold(True); item.setFont(f2)
-                self.tabla_dia.setItem(r, c, item)
+                    col = COL_ESTADO.get(evento.estado, "#FFF")
+                    cell.setForeground(QColor(col))
+                    f2 = QFont(); f2.setBold(True); cell.setFont(f2)
+                self.tabla_dia.setItem(r, c, cell)
 
     # -----------------------------------------------------------------
     # Vista lista
@@ -391,6 +422,21 @@ class CalendarioWidget(QWidget):
                         QColor(COL_ESTADO.get(ot.estado, "#FFF")))
                     ff = QFont(); ff.setBold(True); item.setFont(ff)
                 tabla.setItem(r, c, item)
+        for plan in sorted(self._planes_mes,
+                           key=lambda p: p.proxima_ejecucion or datetime.max):
+            r = tabla.rowCount(); tabla.insertRow(r)
+            try: eq = plan.equipo.nombre if plan.equipo else "-"
+            except: eq = "-"
+            fecha = plan.proxima_ejecucion.strftime("%d/%m/%Y") if plan.proxima_ejecucion else "-"
+            vals = [f"PLAN-{plan.codigo}", eq, plan.tipo_mantenimiento, "Pendiente", fecha, "-", "Planificado"]
+            for c, v in enumerate(vals):
+                item = QTableWidgetItem(str(v))
+                if c == 2:
+                    item.setForeground(QColor("#8B5CF6"))
+                if c == 3:
+                    ff = QFont(); ff.setBold(True); item.setFont(ff)
+                    item.setForeground(QColor("#8B5CF6"))
+                tabla.setItem(r, c, item)
 
         self._lay_cal.addWidget(tabla)
 
@@ -428,9 +474,8 @@ class CalendarioWidget(QWidget):
         # Celdas
         for col in range(7):
             dia = base + timedelta(days=col)
-            ots_dia = [o for o in self._ots_mes
-                       if o.fecha_programada
-                       and o.fecha_programada.date() == dia.date()]
+            ots_dia = [o for o in self._ots_mes if o.fecha_programada and o.fecha_programada.date() == dia.date()]
+            planes_dia = [p for p in self._planes_mes if p.proxima_ejecucion and p.proxima_ejecucion.date() == dia.date()]
             cel = QFrame()
             cel.setMinimumHeight(200)
             cel.setStyleSheet(
@@ -449,6 +494,13 @@ class CalendarioWidget(QWidget):
                     f"padding:3px 5px; font-size:10px; font-weight:600; border:none;")
                 lbl_ot.setWordWrap(True)
                 lay_c.addWidget(lbl_ot)
+            for plan in planes_dia:
+                lbl_pl = QLabel(f"PLAN {plan.codigo}\n{plan.tipo_mantenimiento}\nPendiente")
+                lbl_pl.setStyleSheet(
+                    "background-color:#8B5CF6; color:white; border-radius:3px; "
+                    "padding:3px 5px; font-size:10px; font-weight:600; border:none;")
+                lbl_pl.setWordWrap(True)
+                lay_c.addWidget(lbl_pl)
             lay_c.addStretch()
             grid.addWidget(cel, 1, col)
 
@@ -474,6 +526,7 @@ class CalendarioWidget(QWidget):
 
         self.lbl_resumen.setText(
             f"Total OTs: {total}\n"
+            f"Planes en calendario: {len(self._planes_mes)}\n"
             f"Preventivas: {prev}\n"
             f"Correctivas: {corr}\n"
             f"Cerradas: {cerr}\n"
@@ -481,3 +534,48 @@ class CalendarioWidget(QWidget):
             f"Vencidas: {venc}\n"
             f"Costo mes: {costo:,.2f}"
         )
+
+    def _mostrar_alertas(self):
+        alertas = PlanService.obtener_alertas_mantenimiento(dias_max=60)
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Alertas de mantenimientos proximos")
+        dlg.resize(760, 380)
+        lay = QVBoxLayout(dlg)
+        lbl = QLabel(f"Total alertas: {len(alertas)}")
+        lbl.setStyleSheet(f"font-weight:700; color:{COLOR_TEXT_PRIMARY};")
+        lay.addWidget(lbl)
+
+        tabla = QTableWidget(0, 7)
+        tabla.setHorizontalHeaderLabels(
+            ["Plan", "Equipo", "Tipo", "Proxima ejecucion", "Dias restantes", "Anticipacion", "Prioridad"]
+        )
+        tabla.horizontalHeader().setStretchLastSection(True)
+        tabla.verticalHeader().setVisible(False)
+        tabla.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        for i, w in enumerate([95, 170, 90, 130, 95, 90]):
+            tabla.setColumnWidth(i, w)
+
+        for a in alertas:
+            r = tabla.rowCount()
+            tabla.insertRow(r)
+            vals = [
+                a["codigo"],
+                a["equipo"],
+                a["tipo"],
+                a["proxima_ejecucion"].strftime("%d/%m/%Y"),
+                str(a["dias_restantes"]),
+                f"{a['dias_alerta']} dia(s)",
+                a["prioridad"],
+            ]
+            for c, v in enumerate(vals):
+                item = QTableWidgetItem(v)
+                if c == 4 and int(a["dias_restantes"]) <= 0:
+                    item.setForeground(QColor(COLOR_DANGER))
+                    ff = QFont(); ff.setBold(True); item.setFont(ff)
+                tabla.setItem(r, c, item)
+        lay.addWidget(tabla)
+
+        cerrar = QPushButton("Cerrar")
+        cerrar.clicked.connect(dlg.accept)
+        lay.addWidget(cerrar, alignment=Qt.AlignmentFlag.AlignRight)
+        dlg.exec()

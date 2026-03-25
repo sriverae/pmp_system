@@ -2,8 +2,9 @@
 Servicio de Planes de Mantenimiento.
 Genera OTs automáticamente desde planes activos.
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Tuple, Optional
+from sqlalchemy.orm import joinedload
 
 from app.core.database import get_session
 from app.core.session import session_usuario
@@ -21,7 +22,10 @@ class PlanService:
                texto: str = None) -> List[PlanMantenimiento]:
         session = get_session()
         try:
-            q = session.query(PlanMantenimiento)
+            q = session.query(PlanMantenimiento).options(
+                joinedload(PlanMantenimiento.equipo),
+                joinedload(PlanMantenimiento.responsable),
+            )
             if equipo_id:
                 q = q.filter_by(equipo_id=equipo_id)
             if estado:
@@ -85,6 +89,7 @@ class PlanService:
                 procedimiento=datos.get("procedimiento"),
                 fecha_inicio=datos.get("fecha_inicio"),
                 fecha_fin=datos.get("fecha_fin"),
+                alerta_dias_anticipacion=int(datos.get("alerta_dias_anticipacion", 7)),
                 estado="Activo",
                 creado_por=session_usuario.usuario_id
             )
@@ -191,6 +196,7 @@ class PlanService:
                 responsable_id=original.responsable_id,
                 procedimiento=original.procedimiento,
                 estado="Activo",
+                alerta_dias_anticipacion=original.alerta_dias_anticipacion or 7,
                 creado_por=session_usuario.usuario_id
             )
             session.add(nuevo)
@@ -302,5 +308,46 @@ class PlanService:
         except Exception as e:
             session.rollback()
             return 0, [f"Error: {str(e)}"]
+        finally:
+            session.close()
+
+    @staticmethod
+    def obtener_alertas_mantenimiento(dias_max: int = 30) -> List[dict]:
+        """
+        Retorna planes activos con mantenimiento próximo según
+        alerta_dias_anticipacion configurable por plan.
+        """
+        ahora = datetime.now()
+        limite_global = ahora + timedelta(days=dias_max)
+        session = get_session()
+        try:
+            planes = (session.query(PlanMantenimiento)
+                      .options(joinedload(PlanMantenimiento.equipo))
+                      .filter(
+                          PlanMantenimiento.estado == "Activo",
+                          PlanMantenimiento.proxima_ejecucion.isnot(None),
+                          PlanMantenimiento.proxima_ejecucion <= limite_global
+                      )
+                      .order_by(PlanMantenimiento.proxima_ejecucion.asc())
+                      .all())
+
+            alertas = []
+            for p in planes:
+                if not p.proxima_ejecucion:
+                    continue
+                dias_alerta = int(p.alerta_dias_anticipacion or 7)
+                delta_dias = (p.proxima_ejecucion.date() - ahora.date()).days
+                if delta_dias <= dias_alerta:
+                    alertas.append({
+                        "plan_id": p.id,
+                        "codigo": p.codigo,
+                        "equipo": p.equipo.nombre if p.equipo else "-",
+                        "tipo": p.tipo_mantenimiento,
+                        "proxima_ejecucion": p.proxima_ejecucion,
+                        "dias_restantes": delta_dias,
+                        "dias_alerta": dias_alerta,
+                        "prioridad": p.prioridad,
+                    })
+            return alertas
         finally:
             session.close()
