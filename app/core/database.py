@@ -1,7 +1,7 @@
 """
 Gestión del engine y sesión de SQLAlchemy.
 """
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, Session
 from app.models.base import Base
 import os
@@ -33,6 +33,7 @@ def inicializar_base_datos(db_path: str = "pmp_data.db"):
     )
 
     Base.metadata.create_all(_engine)
+    _aplicar_migraciones_livianas()
 
     # Insertar datos iniciales si la BD es nueva
     _inicializar_datos_base()
@@ -111,3 +112,22 @@ def _hash_password(password: str) -> str:
     """Hash SHA-256 simple para contraseñas (producción usar bcrypt)."""
     import hashlib
     return hashlib.sha256(password.encode()).hexdigest()
+
+
+def _aplicar_migraciones_livianas():
+    """
+    Ajustes simples de esquema para instalaciones existentes sin usar Alembic.
+    """
+    if _engine is None:
+        return
+
+    with _engine.begin() as conn:
+        cols = conn.execute(text("PRAGMA table_info(planes_mantenimiento)")).fetchall()
+        nombres = {c[1] for c in cols}
+        if "alerta_dias_anticipacion" not in nombres:
+            conn.execute(
+                text(
+                    "ALTER TABLE planes_mantenimiento "
+                    "ADD COLUMN alerta_dias_anticipacion INTEGER DEFAULT 7"
+                )
+            )

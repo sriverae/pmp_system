@@ -141,6 +141,7 @@ class PlanesWidget(QWidget):
                 f"Codigo: {p.codigo}\nEquipo: {eq}\nTipo: {p.tipo_mantenimiento}\n"
                 f"Frecuencia: {p.frecuencia} {p.unidad_frecuencia}\nCriterio: {p.criterio}\n"
                 f"Duracion estimada: {p.duracion_estimada} h\nPrioridad: {p.prioridad}\n"
+                f"Alerta anticipada: {int(p.alerta_dias_anticipacion or 7)} dia(s)\n"
                 f"Estado: {p.estado}\nProxima ejecucion: "
                 f"{p.proxima_ejecucion.strftime('%d/%m/%Y') if p.proxima_ejecucion else '-'}\n"
                 f"Descripcion: {p.descripcion or '-'}")
@@ -235,6 +236,7 @@ class PlanForm(QDialog):
         self.combo_criterio = QComboBox()
         self.combo_criterio.addItems(["Fecha","Contador","Ambos"])
         self.inp_duracion = QDoubleSpinBox(); self.inp_duracion.setRange(0.1,999); self.inp_duracion.setValue(2); self.inp_duracion.setSuffix(" horas")
+        self.inp_alerta_dias = QSpinBox(); self.inp_alerta_dias.setRange(0, 120); self.inp_alerta_dias.setValue(7)
         self.combo_prioridad = QComboBox()
         self.combo_prioridad.addItems(["Urgente","Alta","Normal","Baja"]); self.combo_prioridad.setCurrentText("Normal")
         self.combo_criticidad = QComboBox()
@@ -250,6 +252,7 @@ class PlanForm(QDialog):
         f1.addRow("Unidad frecuencia:", self.combo_unidad)
         f1.addRow("Criterio:", self.combo_criterio)
         f1.addRow("Duracion estimada:", self.inp_duracion)
+        f1.addRow("Alerta anticipada (dias):", self.inp_alerta_dias)
         f1.addRow("Prioridad:", self.combo_prioridad)
         f1.addRow("Criticidad:", self.combo_criticidad)
         f1.addRow("Procedimiento:", self.inp_procedimiento)
@@ -287,6 +290,7 @@ class PlanForm(QDialog):
             self.combo_unidad.setCurrentText(p.unidad_frecuencia)
             self.combo_criterio.setCurrentText(p.criterio)
             self.inp_duracion.setValue(p.duracion_estimada or 1)
+            self.inp_alerta_dias.setValue(int(p.alerta_dias_anticipacion or 7))
             self.combo_prioridad.setCurrentText(p.prioridad)
             self.combo_criticidad.setCurrentText(p.criticidad or "Media")
             self.inp_procedimiento.setPlainText(p.procedimiento or "")
@@ -302,6 +306,7 @@ class PlanForm(QDialog):
             "unidad_frecuencia":   self.combo_unidad.currentText(),
             "criterio":            self.combo_criterio.currentText(),
             "duracion_estimada":   self.inp_duracion.value(),
+            "alerta_dias_anticipacion": self.inp_alerta_dias.value(),
             "prioridad":           self.combo_prioridad.currentText(),
             "criticidad":          self.combo_criticidad.currentText(),
             "procedimiento":       self.inp_procedimiento.toPlainText().strip(),
@@ -313,7 +318,9 @@ class PlanForm(QDialog):
             try:
                 p = session.query(PlanMantenimiento).get(self.plan_id)
                 for k, v in datos.items():
-                    if k not in ("codigo","equipo_id") and v:
+                    if k in ("codigo", "equipo_id"):
+                        continue
+                    if v is not None:
                         setattr(p, k, v)
                 session.commit()
                 QMessageBox.information(self,"OK","Plan actualizado.")
