@@ -87,7 +87,13 @@ class CalendarioWidget(QWidget):
         btn_hoy.clicked.connect(self._ir_hoy)
 
         self.combo_vista = QComboBox()
-        self.combo_vista.addItems(["Plan PM - Fechas", "Plan PM - Hra/Km", "Lista OTs/Planes", "Vista Semanal"])
+        self.combo_vista.addItems([
+            "Plan PM - Fechas",
+            "Plan PM - Hra/Km",
+            "Cronograma Anual PM",
+            "Lista OTs/Planes",
+            "Vista Semanal"
+        ])
         self.combo_vista.setFixedWidth(170)
         self.combo_vista.currentIndexChanged.connect(self._cambiar_vista)
         btn_lectura = QPushButton("Registrar horómetro")
@@ -238,6 +244,8 @@ class CalendarioWidget(QWidget):
             self._render_mensual(primer_dia, ultimo_dia_n)
         elif vista == "Plan PM - Hra/Km":
             self._render_horometro()
+        elif vista == "Cronograma Anual PM":
+            self._render_cronograma_anual(self._anio)
         elif vista == "Vista Semanal":
             self._render_semanal()
         else:
@@ -658,3 +666,88 @@ class CalendarioWidget(QWidget):
         lbl.setStyleSheet(f"color:{COLOR_TEXT_SECONDARY}; font-size:12px;")
         self._lay_cal.addWidget(lbl)
         self._lay_cal.addWidget(tabla)
+
+    def _render_cronograma_anual(self, anio: int):
+        while self._lay_cal.count():
+            item = self._lay_cal.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        inicio_anio = datetime(anio, 1, 1)
+        fin_anio = datetime(anio, 12, 31, 23, 59, 59)
+        planes = PlanService.listar(estado="Activo")
+        planes = [p for p in planes if p.proxima_ejecucion]
+
+        tabla = QTableWidget(0, 8 + 52)
+        headers = [
+            "Código", "Equipo", "Tipo", "Prioridad", "Frecuencia",
+            "Inicio", "Próxima", "Estado"
+        ] + [f"S{i}" for i in range(1, 53)]
+        tabla.setHorizontalHeaderLabels(headers)
+        tabla.verticalHeader().setVisible(False)
+        tabla.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        tabla.setAlternatingRowColors(True)
+        for i, w in enumerate([90, 170, 95, 80, 95, 80, 85, 90]):
+            tabla.setColumnWidth(i, w)
+        for i in range(8, 60):
+            tabla.setColumnWidth(i, 30)
+
+        for p in planes:
+            fila = tabla.rowCount()
+            tabla.insertRow(fila)
+            try:
+                equipo = p.equipo.nombre if p.equipo else "-"
+            except Exception:
+                equipo = "-"
+            base_vals = [
+                p.codigo,
+                equipo,
+                p.tipo_mantenimiento,
+                p.prioridad,
+                f"{p.frecuencia:.0f} {p.unidad_frecuencia}",
+                p.fecha_inicio.strftime("%d/%m") if p.fecha_inicio else "-",
+                p.proxima_ejecucion.strftime("%d/%m/%Y"),
+                p.estado,
+            ]
+            for c, v in enumerate(base_vals):
+                tabla.setItem(fila, c, QTableWidgetItem(str(v)))
+
+            for sem in self._semanas_programadas_plan(p, inicio_anio, fin_anio):
+                col = 8 + sem - 1
+                if 8 <= col < tabla.columnCount():
+                    it = QTableWidgetItem("X")
+                    it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    it.setForeground(QColor(COLOR_ACCENT_BLUE))
+                    tabla.setItem(fila, col, it)
+
+        titulo = QLabel(f"Cronograma Anual de Mantenimiento Preventivo - Año {anio}")
+        titulo.setStyleSheet(f"font-size:18px; font-weight:700; color:{COLOR_TEXT_PRIMARY};")
+        self._lay_cal.addWidget(titulo)
+        self._lay_cal.addWidget(tabla)
+
+    def _semanas_programadas_plan(self, plan, inicio: datetime, fin: datetime) -> list[int]:
+        """
+        Calcula semanas ISO programadas dentro del año según la frecuencia del plan.
+        """
+        from dateutil.relativedelta import relativedelta
+
+        actual = plan.proxima_ejecucion or inicio
+        unidad = (plan.unidad_frecuencia or "Dias").lower()
+        freq = max(1, int(plan.frecuencia or 1))
+        semanas = set()
+        guard = 0
+        while actual <= fin and guard < 500:
+            guard += 1
+            if actual >= inicio:
+                semanas.add(min(52, max(1, actual.isocalendar()[1])))
+            if "dia" in unidad:
+                actual += timedelta(days=freq)
+            elif "sem" in unidad:
+                actual += timedelta(weeks=freq)
+            elif "mes" in unidad:
+                actual += relativedelta(months=freq)
+            elif "año" in unidad or "ano" in unidad:
+                actual += relativedelta(years=freq)
+            else:
+                actual += timedelta(days=freq)
+        return sorted(semanas)
