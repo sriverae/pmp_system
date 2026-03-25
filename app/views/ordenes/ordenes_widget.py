@@ -4,7 +4,7 @@ Módulo Órdenes de Trabajo — Gestión completa de OTs.
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QFrame, QMessageBox, QComboBox,
-    QDateEdit, QInputDialog
+    QDateEdit, QInputDialog, QDialog, QTableWidget, QTableWidgetItem
 )
 from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QColor
@@ -141,6 +141,7 @@ class OrdenesWidget(QWidget):
             ("[X] Anular",        self._anular,   "danger"),
         ]
         botones_der = [
+            ("Alertas OT",      self._alertas_ot, "warning"),
             ("[Adj] Adjuntos",  self._adjuntos, "normal"),
             ("[Hist] Historial", self._historial_ot, "normal"),
             ("[Rep] Imprimir",  self._imprimir, "normal"),
@@ -501,3 +502,43 @@ class OrdenesWidget(QWidget):
             QMessageBox.information(self, "Exportar", f"Exportado: {ruta}")
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
+
+    def _alertas_ot(self):
+        alertas = OTService.obtener_alertas_ordenes_programadas()
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Alertas de Órdenes de Trabajo")
+        dlg.resize(820, 420)
+        lay = QVBoxLayout(dlg)
+        lbl = QLabel(f"OTs en alerta: {len(alertas)}")
+        lbl.setStyleSheet(f"font-weight:700; color:{COLOR_TEXT_PRIMARY};")
+        lay.addWidget(lbl)
+
+        tabla = QTableWidget(0, 7)
+        tabla.setHorizontalHeaderLabels(
+            ["OT", "Equipo", "Tipo", "Estado", "Fecha Programada", "Días Restantes", "Anticipación"]
+        )
+        tabla.horizontalHeader().setStretchLastSection(True)
+        tabla.verticalHeader().setVisible(False)
+        tabla.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        for i, w in enumerate([110, 180, 100, 100, 130, 110]):
+            tabla.setColumnWidth(i, w)
+
+        for a in alertas:
+            r = tabla.rowCount()
+            tabla.insertRow(r)
+            vals = [
+                a["numero"], a["equipo"], a["tipo_ot"], a["estado"],
+                a["fecha_programada"].strftime("%d/%m/%Y"),
+                str(a["dias_restantes"]), f"{a['dias_alerta']} día(s)"
+            ]
+            for c, v in enumerate(vals):
+                it = QTableWidgetItem(v)
+                if c == 5 and int(a["dias_restantes"]) <= 0:
+                    it.setForeground(QColor(COLOR_DANGER))
+                tabla.setItem(r, c, it)
+        lay.addWidget(tabla)
+
+        btn = QPushButton("Cerrar")
+        btn.clicked.connect(dlg.accept)
+        lay.addWidget(btn, alignment=Qt.AlignmentFlag.AlignRight)
+        dlg.exec()

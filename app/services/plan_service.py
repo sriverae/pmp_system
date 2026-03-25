@@ -2,14 +2,15 @@
 Servicio de Planes de Mantenimiento.
 Genera OTs automáticamente desde planes activos.
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Tuple, Optional
+from sqlalchemy.orm import joinedload
 
 from app.core.database import get_session
 from app.core.session import session_usuario
 from app.models.plan import PlanMantenimiento, ChecklistPlan, PlanMaterial
 from app.models.orden_trabajo import OrdenTrabajo, OTMaterialPrevisto
-from app.models.equipo import Equipo
+from app.models.equipo import Equipo, LecturaContador
 from app.services.auditoria_service import AuditoriaService
 from app.services.ot_service import OTService
 
@@ -21,7 +22,10 @@ class PlanService:
                texto: str = None) -> List[PlanMantenimiento]:
         session = get_session()
         try:
-            q = session.query(PlanMantenimiento)
+            q = session.query(PlanMantenimiento).options(
+                joinedload(PlanMantenimiento.equipo),
+                joinedload(PlanMantenimiento.responsable),
+            )
             if equipo_id:
                 q = q.filter_by(equipo_id=equipo_id)
             if estado:
@@ -85,6 +89,7 @@ class PlanService:
                 procedimiento=datos.get("procedimiento"),
                 fecha_inicio=datos.get("fecha_inicio"),
                 fecha_fin=datos.get("fecha_fin"),
+                alerta_dias_anticipacion=int(datos.get("alerta_dias_anticipacion", 7)),
                 estado="Activo",
                 creado_por=session_usuario.usuario_id
             )
@@ -191,6 +196,7 @@ class PlanService:
                 responsable_id=original.responsable_id,
                 procedimiento=original.procedimiento,
                 estado="Activo",
+                alerta_dias_anticipacion=original.alerta_dias_anticipacion or 7,
                 creado_por=session_usuario.usuario_id
             )
             session.add(nuevo)
@@ -302,5 +308,119 @@ class PlanService:
         except Exception as e:
             session.rollback()
             return 0, [f"Error: {str(e)}"]
+        finally:
+            session.close()
+
+    @staticmethod
+    def obtener_alertas_mantenimiento(dias_max: int = 30) -> List[dict]:
+        """
+        Retorna planes activos con mantenimiento próximo según
+        alerta_dias_anticipacion configurable por plan.
+        """
+        ahora = datetime.now()
+        limite_global = ahora + timedelta(days=dias_max)
+        session = get_session()
+        try:
+            planes = (session.query(PlanMantenimiento)
+                      .options(joinedload(PlanMantenimiento.equipo))
+                      .filter(
+                          PlanMantenimiento.estado == "Activo",
+                          PlanMantenimiento.proxima_ejecucion.isnot(None),
+                          PlanMantenimiento.proxima_ejecucion <= limite_global
+                      )
+                      .order_by(PlanMantenimiento.proxima_ejecucion.asc())
+                      .all())
+
+            alertas = []
+            for p in planes:
+                if not p.proxima_ejecucion:
+                    continue
+                dias_alerta = int(p.alerta_dias_anticipacion or 7)
+                delta_dias = (p.proxima_ejecucion.date() - ahora.date()).days
+                if delta_dias <= dias_alerta:
+                    alertas.append({
+                        "plan_id": p.id,
+                        "codigo": p.codigo,
+                        "equipo": p.equipo.nombre if p.equipo else "-",
+                        "tipo": p.tipo_mantenimiento,
+                        "proxima_ejecucion": p.proxima_ejecucion,
+                        "dias_restantes": delta_dias,
+                        "dias_alerta": dias_alerta,
+                        "prioridad": p.prioridad,
+                    })
+            return alertas
+        finally:
+            session.close()
+
+    @staticmethod
+    def registrar_lectura_diaria(equipo_id: int, lectura: float, observaciones: str = "") -> Tuple[bool, str]:
+        """Registra lectura diaria de horómetro/km y actualiza el equipo."""
+        session = get_session()
+        try:
+            eq = session.query(Equipo).get(equipo_id)
+            if not eq:
+                return False, "Equipo no encontrado."
+            lectura = float(lectura)
+            if lectura < 0:
+                return False, "La lectura no puede ser negativa."
+
+            session.add(LecturaContador(
+                equipo_id=equipo_id,
+                lectura=lectura,
+                usuario_id=session_usuario.usuario_id,
+                observaciones=observaciones or "Lectura diaria"
+            ))
+            eq.lectura_actual = lectura
+            session.commit()
+            return True, f"Lectura registrada para {eq.codigo}: {lectura:.2f}"
+        except Exception as e:
+            session.rollback()
+            return False, str(e)
+        finally:
+            session.close()
+
+    @staticmethod
+    def obtener_estado_planes_contador(uso_diario_default: float = 8.0) -> List[dict]:
+        """
+        Retorna el estado de planes por contador (hrs/km) con faltante y
+        días estimados para mantenimiento.
+        """
+        session = get_session()
+        try:
+            planes = (session.query(PlanMantenimiento)
+                      .options(joinedload(PlanMantenimiento.equipo))
+                      .filter(
+                          PlanMantenimiento.estado == "Activo",
+                          PlanMantenimiento.criterio.in_(["Contador", "Ambos"])
+                      )
+                      .order_by(PlanMantenimiento.codigo.asc())
+                      .all())
+            res = []
+            for p in planes:
+                eq = p.equipo
+                if not eq:
+                    continue
+                lectura_actual = float(eq.lectura_actual or 0)
+                frecuencia = float(p.frecuencia or 0)
+                if frecuencia <= 0:
+                    continue
+                ciclo_actual = int(lectura_actual // frecuencia)
+                meta_siguiente = (ciclo_actual + 1) * frecuencia
+                faltante = max(0.0, meta_siguiente - lectura_actual)
+                uso_diario = max(0.1, float(uso_diario_default or 8.0))
+                dias_estimados = faltante / uso_diario
+                res.append({
+                    "plan_id": p.id,
+                    "codigo": p.codigo,
+                    "equipo_id": eq.id,
+                    "equipo": eq.nombre,
+                    "tipo_contador": eq.tipo_contador or "Hra/Km",
+                    "lectura_actual": lectura_actual,
+                    "meta_siguiente": meta_siguiente,
+                    "faltante": faltante,
+                    "dias_estimados": dias_estimados,
+                    "prioridad": p.prioridad,
+                })
+            return res
         finally:
             session.close()
