@@ -1,18 +1,18 @@
 """
-Estilos globales QSS — Tema Industrial PMP.
-Paleta: azul oscuro, gris acero, acentos verdes/amarillo/rojo.
+Estilos globales QSS — Tema "Midnight Slate" PMP.
+Paleta: grafito, azul petróleo y acentos modernos.
 """
 
 # Colores principales
-COLOR_BG_DARK = "#1a2332"
-COLOR_BG_MEDIUM = "#1e2d3d"
-COLOR_BG_LIGHT = "#243447"
-COLOR_BG_PANEL = "#2a3f55"
-COLOR_ACCENT_BLUE = "#2196F3"
-COLOR_ACCENT_BLUE_DARK = "#1565C0"
-COLOR_TEXT_PRIMARY = "#e8edf2"
-COLOR_TEXT_SECONDARY = "#9aabb8"
-COLOR_BORDER = "#344d63"
+COLOR_BG_DARK = "#0f172a"
+COLOR_BG_MEDIUM = "#111c33"
+COLOR_BG_LIGHT = "#16223d"
+COLOR_BG_PANEL = "#1b2a4a"
+COLOR_ACCENT_BLUE = "#38bdf8"
+COLOR_ACCENT_BLUE_DARK = "#0284c7"
+COLOR_TEXT_PRIMARY = "#e2e8f0"
+COLOR_TEXT_SECONDARY = "#94a3b8"
+COLOR_BORDER = "#2f4566"
 
 # Colores de estado
 COLOR_SUCCESS = "#4CAF50"    # Verde — correcto / disponible / cerrado
@@ -99,17 +99,17 @@ QToolButton:pressed {{
    BOTONES
 =========================================================== */
 QPushButton {{
-    background-color: {COLOR_BG_PANEL};
+    background-color: {COLOR_BG_LIGHT};
     color: {COLOR_TEXT_PRIMARY};
     border: 1px solid {COLOR_BORDER};
-    border-radius: 4px;
-    padding: 7px 16px;
+    border-radius: 8px;
+    padding: 8px 16px;
     font-weight: 500;
     min-height: 30px;
 }}
 QPushButton:hover {{
-    background-color: {COLOR_ACCENT_BLUE};
-    border-color: {COLOR_ACCENT_BLUE};
+    background-color: #1f3a63;
+    border-color: {COLOR_ACCENT_BLUE_DARK};
 }}
 QPushButton:pressed {{
     background-color: {COLOR_ACCENT_BLUE_DARK};
@@ -159,7 +159,7 @@ QDoubleSpinBox, QDateEdit, QTimeEdit, QDateTimeEdit {{
     background-color: {COLOR_BG_MEDIUM};
     color: {COLOR_TEXT_PRIMARY};
     border: 1px solid {COLOR_BORDER};
-    border-radius: 4px;
+    border-radius: 8px;
     padding: 6px 8px;
     selection-background-color: {COLOR_ACCENT_BLUE};
 }}
@@ -177,7 +177,7 @@ QComboBox {{
     background-color: {COLOR_BG_MEDIUM};
     color: {COLOR_TEXT_PRIMARY};
     border: 1px solid {COLOR_BORDER};
-    border-radius: 4px;
+    border-radius: 8px;
     padding: 6px 8px;
     min-height: 28px;
 }}
@@ -203,7 +203,7 @@ QTableWidget, QTableView {{
     color: {COLOR_TEXT_PRIMARY};
     gridline-color: {COLOR_BORDER};
     border: 1px solid {COLOR_BORDER};
-    border-radius: 4px;
+    border-radius: 8px;
     selection-background-color: {COLOR_ACCENT_BLUE};
     alternate-background-color: {COLOR_BG_LIGHT};
 }}
@@ -216,7 +216,7 @@ QTableWidget::item:selected {{
     color: white;
 }}
 QHeaderView::section {{
-    background-color: {COLOR_BG_PANEL};
+    background-color: #223459;
     color: {COLOR_TEXT_PRIMARY};
     border: none;
     border-right: 1px solid {COLOR_BORDER};
@@ -320,31 +320,31 @@ QLabel#kpi_titulo {{
 QFrame#card_kpi {{
     background-color: {COLOR_BG_PANEL};
     border: 1px solid {COLOR_BORDER};
-    border-radius: 8px;
+    border-radius: 12px;
     padding: 12px;
 }}
 QFrame#card_kpi_success {{
     background-color: {COLOR_BG_PANEL};
     border: 1px solid {COLOR_SUCCESS};
-    border-radius: 8px;
+    border-radius: 12px;
     border-left: 4px solid {COLOR_SUCCESS};
 }}
 QFrame#card_kpi_warning {{
     background-color: {COLOR_BG_PANEL};
     border: 1px solid {COLOR_WARNING};
-    border-radius: 8px;
+    border-radius: 12px;
     border-left: 4px solid {COLOR_WARNING};
 }}
 QFrame#card_kpi_danger {{
     background-color: {COLOR_BG_PANEL};
     border: 1px solid {COLOR_DANGER};
-    border-radius: 8px;
+    border-radius: 12px;
     border-left: 4px solid {COLOR_DANGER};
 }}
 QFrame#card_kpi_info {{
     background-color: {COLOR_BG_PANEL};
     border: 1px solid {COLOR_ACCENT_BLUE};
-    border-radius: 8px;
+    border-radius: 12px;
     border-left: 4px solid {COLOR_ACCENT_BLUE};
 }}
 
