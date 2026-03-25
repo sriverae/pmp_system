@@ -4,6 +4,7 @@ Toda la lógica de negocio de OTs: crear, liberar, iniciar, cerrar, anular.
 """
 from datetime import datetime
 from typing import List, Optional, Tuple
+from sqlalchemy.orm import joinedload
 
 from app.core.database import get_session
 from app.core.session import session_usuario
@@ -352,7 +353,11 @@ class OTService:
         """Lista OTs con filtros opcionales."""
         session = get_session()
         try:
-            q = session.query(OrdenTrabajo)
+            q = (session.query(OrdenTrabajo)
+                 .options(
+                     joinedload(OrdenTrabajo.equipo),
+                     joinedload(OrdenTrabajo.responsable),
+                 ))
             if filtros:
                 if filtros.get("estado"):
                     q = q.filter(OrdenTrabajo.estado == filtros["estado"])
@@ -367,5 +372,46 @@ class OTService:
                 if filtros.get("prioridad"):
                     q = q.filter(OrdenTrabajo.prioridad == filtros["prioridad"])
             return q.order_by(OrdenTrabajo.fecha_programada.desc()).all()
+        finally:
+            session.close()
+
+    @staticmethod
+    def obtener_alertas_ordenes_programadas(dias_default: int = 3) -> List[dict]:
+        """
+        Retorna OTs programadas/liberadas por vencer según anticipación del plan.
+        """
+        from app.models.plan import PlanMantenimiento
+
+        ahora = datetime.now()
+        session = get_session()
+        try:
+            ots = (session.query(OrdenTrabajo)
+                   .options(
+                       joinedload(OrdenTrabajo.equipo),
+                       joinedload(OrdenTrabajo.plan),
+                       joinedload(OrdenTrabajo.responsable),
+                   )
+                   .filter(
+                       OrdenTrabajo.estado.in_(["Programada", "Liberada", "En proceso"]),
+                       OrdenTrabajo.fecha_programada.isnot(None)
+                   )
+                   .order_by(OrdenTrabajo.fecha_programada.asc())
+                   .all())
+            alertas = []
+            for ot in ots:
+                dias_rest = (ot.fecha_programada.date() - ahora.date()).days
+                dias_alerta = int(getattr(ot.plan, "alerta_dias_anticipacion", dias_default) or dias_default)
+                if dias_rest <= dias_alerta:
+                    alertas.append({
+                        "ot_id": ot.id,
+                        "numero": ot.numero,
+                        "equipo": ot.equipo.nombre if ot.equipo else "-",
+                        "tipo_ot": ot.tipo_ot,
+                        "estado": ot.estado,
+                        "fecha_programada": ot.fecha_programada,
+                        "dias_restantes": dias_rest,
+                        "dias_alerta": dias_alerta,
+                    })
+            return alertas
         finally:
             session.close()
