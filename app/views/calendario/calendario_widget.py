@@ -1,0 +1,483 @@
+"""
+Modulo Calendario - Vista mensual de OTs programadas y planes.
+"""
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+    QPushButton, QFrame, QComboBox, QTableWidget,
+    QTableWidgetItem, QHeaderView, QSizePolicy,
+    QGridLayout, QScrollArea, QMessageBox
+)
+from PySide6.QtCore import Qt, QDate, QTimer
+from PySide6.QtGui import QColor, QFont
+from app.services.ot_service import OTService
+from app.services.plan_service import PlanService
+from app.views.shared.styles import (
+    COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_ACCENT_BLUE,
+    COLOR_BORDER, COLOR_BG_PANEL, COLOR_BG_MEDIUM, COLOR_BG_DARK,
+    COLOR_SUCCESS, COLOR_WARNING, COLOR_DANGER
+)
+from datetime import datetime, timedelta
+import calendar
+
+
+DIAS_ES = ["Lun","Mar","Mie","Jue","Vie","Sab","Dom"]
+MESES_ES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio",
+            "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
+
+COL_TIPO = {
+    "Preventivo":  "#1565C0",
+    "Correctivo":  "#C62828",
+    "Inspeccion":  "#1B5E20",
+    "Predictivo":  "#4A148C",
+    "Emergencia":  "#B71C1C",
+    "Lubricacion": "#E65100",
+    "Mejora":      "#00695C",
+}
+COL_ESTADO = {
+    "Programada": "#FF9800",
+    "Liberada":   "#2196F3",
+    "En proceso": "#9C27B0",
+    "Cerrada":    "#4CAF50",
+    "Anulada":    "#9E9E9E",
+    "Vencida":    "#F44336",
+}
+
+
+class CalendarioWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        hoy = datetime.now()
+        self._anio  = hoy.year
+        self._mes   = hoy.month
+        self._ots_mes = []
+        self._construir_ui()
+        QTimer.singleShot(100, self.cargar_mes)
+
+    def _construir_ui(self):
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(16, 12, 16, 12)
+        lay.setSpacing(10)
+
+        # Encabezado + navegacion
+        enc = QHBoxLayout()
+        lbl = QLabel("Calendario de Mantenimiento")
+        lbl.setStyleSheet(f"font-size:18px; font-weight:700; color:{COLOR_TEXT_PRIMARY};")
+
+        btn_ant = QPushButton("< Anterior")
+        btn_ant.setFixedSize(90, 30)
+        btn_ant.clicked.connect(self._mes_anterior)
+
+        self.lbl_mes = QLabel()
+        self.lbl_mes.setFixedWidth(180)
+        self.lbl_mes.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_mes.setStyleSheet(
+            f"font-size:15px; font-weight:700; color:{COLOR_ACCENT_BLUE};")
+
+        btn_sig = QPushButton("Siguiente >")
+        btn_sig.setFixedSize(90, 30)
+        btn_sig.clicked.connect(self._mes_siguiente)
+
+        btn_hoy = QPushButton("Hoy")
+        btn_hoy.setFixedSize(60, 30)
+        btn_hoy.setStyleSheet(
+            f"background-color:{COLOR_ACCENT_BLUE}; color:white; "
+            f"border-radius:4px; border:none;")
+        btn_hoy.clicked.connect(self._ir_hoy)
+
+        self.combo_vista = QComboBox()
+        self.combo_vista.addItems(["Vista Mensual","Vista Semanal","Lista"])
+        self.combo_vista.setFixedWidth(130)
+        self.combo_vista.currentIndexChanged.connect(self._cambiar_vista)
+
+        enc.addWidget(lbl)
+        enc.addStretch()
+        enc.addWidget(btn_ant)
+        enc.addWidget(self.lbl_mes)
+        enc.addWidget(btn_sig)
+        enc.addWidget(btn_hoy)
+        enc.addWidget(self.combo_vista)
+        lay.addLayout(enc)
+
+        # Leyenda
+        leyenda = QHBoxLayout()
+        leyenda.setSpacing(12)
+        for tipo, col in list(COL_TIPO.items())[:6]:
+            lbl_l = QLabel(tipo)
+            lbl_l.setStyleSheet(
+                f"background-color:{col}; color:white; border-radius:3px; "
+                f"padding:2px 8px; font-size:11px; font-weight:600;")
+            leyenda.addWidget(lbl_l)
+        leyenda.addStretch()
+        lay.addLayout(leyenda)
+
+        # Area principal (calendario + panel lateral)
+        main = QHBoxLayout()
+        main.setSpacing(12)
+
+        # Contenedor calendario con scroll
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._contenedor_cal = QWidget()
+        self._lay_cal = QVBoxLayout(self._contenedor_cal)
+        self._lay_cal.setContentsMargins(0,0,0,0)
+        self._scroll.setWidget(self._contenedor_cal)
+
+        # Panel lateral: lista de OTs del dia seleccionado
+        panel_lat = QFrame()
+        panel_lat.setFixedWidth(280)
+        panel_lat.setStyleSheet(
+            f"background-color:{COLOR_BG_PANEL}; border-radius:8px; "
+            f"border:1px solid {COLOR_BORDER};")
+        lay_lat = QVBoxLayout(panel_lat)
+        lay_lat.setContentsMargins(12,10,12,10)
+        lay_lat.setSpacing(6)
+        lbl_lat = QLabel("OTs del dia seleccionado")
+        lbl_lat.setStyleSheet(
+            f"font-weight:700; font-size:12px; color:{COLOR_TEXT_PRIMARY}; border:none;")
+        lay_lat.addWidget(lbl_lat)
+        self.tabla_dia = QTableWidget(0, 3)
+        self.tabla_dia.setHorizontalHeaderLabels(["Numero","Equipo","Estado"])
+        self.tabla_dia.verticalHeader().setVisible(False)
+        self.tabla_dia.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.tabla_dia.horizontalHeader().setStretchLastSection(True)
+        self.tabla_dia.setColumnWidth(0, 90)
+        self.tabla_dia.setColumnWidth(1, 110)
+        self.tabla_dia.setAlternatingRowColors(True)
+        lay_lat.addWidget(self.tabla_dia)
+
+        self.lbl_dia_sel = QLabel("")
+        self.lbl_dia_sel.setStyleSheet(
+            f"font-size:11px; color:{COLOR_TEXT_SECONDARY}; border:none;")
+        lay_lat.addWidget(self.lbl_dia_sel)
+
+        # Resumen del mes
+        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet(f"border: none; border-top: 1px solid {COLOR_BORDER};")
+        lay_lat.addWidget(sep)
+
+        lbl_res = QLabel("Resumen del mes")
+        lbl_res.setStyleSheet(
+            f"font-weight:700; font-size:12px; color:{COLOR_TEXT_PRIMARY}; border:none;")
+        lay_lat.addWidget(lbl_res)
+        self.lbl_resumen = QLabel("Cargando...")
+        self.lbl_resumen.setStyleSheet(
+            f"font-size:11px; color:{COLOR_TEXT_SECONDARY}; border:none;")
+        self.lbl_resumen.setWordWrap(True)
+        lay_lat.addWidget(self.lbl_resumen)
+        lay_lat.addStretch()
+
+        main.addWidget(self._scroll, 1)
+        main.addWidget(panel_lat)
+        lay.addLayout(main)
+
+    # -----------------------------------------------------------------
+    # Navegacion
+    # -----------------------------------------------------------------
+    def _mes_anterior(self):
+        if self._mes == 1:
+            self._mes = 12; self._anio -= 1
+        else:
+            self._mes -= 1
+        self.cargar_mes()
+
+    def _mes_siguiente(self):
+        if self._mes == 12:
+            self._mes = 1; self._anio += 1
+        else:
+            self._mes += 1
+        self.cargar_mes()
+
+    def _ir_hoy(self):
+        hoy = datetime.now()
+        self._anio = hoy.year; self._mes = hoy.month
+        self.cargar_mes()
+
+    def _cambiar_vista(self):
+        self.cargar_mes()
+
+    # -----------------------------------------------------------------
+    # Carga de datos
+    # -----------------------------------------------------------------
+    def cargar_mes(self):
+        self.lbl_mes.setText(f"{MESES_ES[self._mes]}  {self._anio}")
+        primer_dia = datetime(self._anio, self._mes, 1)
+        ultimo_dia_n = calendar.monthrange(self._anio, self._mes)[1]
+        ultimo_dia = datetime(self._anio, self._mes, ultimo_dia_n, 23, 59, 59)
+
+        try:
+            self._ots_mes = OTService.listar_ots({
+                "fecha_desde": primer_dia,
+                "fecha_hasta": ultimo_dia,
+            })
+        except Exception as e:
+            print(f"[Calendario] Error cargando OTs: {e}")
+            self._ots_mes = []
+
+        vista = self.combo_vista.currentText()
+        if vista == "Vista Mensual":
+            self._render_mensual(primer_dia, ultimo_dia_n)
+        elif vista == "Vista Semanal":
+            self._render_semanal()
+        else:
+            self._render_lista()
+
+        self._actualizar_resumen()
+
+    # -----------------------------------------------------------------
+    # Vista mensual
+    # -----------------------------------------------------------------
+    def _render_mensual(self, primer_dia: datetime, dias_mes: int):
+        # Limpiar contenedor
+        while self._lay_cal.count():
+            item = self._lay_cal.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
+
+        grid = QGridLayout()
+        grid.setSpacing(2)
+
+        # Cabecera dias semana
+        for col, dia in enumerate(DIAS_ES):
+            lbl = QLabel(dia)
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lbl.setFixedHeight(28)
+            lbl.setStyleSheet(
+                f"background-color:{COLOR_BG_PANEL}; color:{COLOR_TEXT_SECONDARY}; "
+                f"font-weight:700; font-size:11px; border-radius:3px; "
+                f"letter-spacing:1px;")
+            grid.addWidget(lbl, 0, col)
+
+        # Construir mapa dia -> ots
+        mapa = {}
+        for ot in self._ots_mes:
+            if ot.fecha_programada:
+                d = ot.fecha_programada.day
+                mapa.setdefault(d, []).append(ot)
+
+        hoy = datetime.now()
+        # Semana en que empieza el mes (0=lunes)
+        inicio_col = primer_dia.weekday()
+        dia_num = 1
+        row = 1
+
+        while dia_num <= dias_mes:
+            for col in range(7):
+                if row == 1 and col < inicio_col:
+                    # Celda vacia
+                    cel = QFrame()
+                    cel.setMinimumHeight(80)
+                    cel.setStyleSheet(f"background-color:{COLOR_BG_DARK}; border-radius:4px;")
+                    grid.addWidget(cel, row, col)
+                    continue
+                if dia_num > dias_mes:
+                    cel = QFrame()
+                    cel.setMinimumHeight(80)
+                    cel.setStyleSheet(f"background-color:{COLOR_BG_DARK}; border-radius:4px;")
+                    grid.addWidget(cel, row, col)
+                    continue
+
+                es_hoy = (hoy.year==self._anio and hoy.month==self._mes and hoy.day==dia_num)
+                ots_dia = mapa.get(dia_num, [])
+                cel = self._celda_dia(dia_num, ots_dia, es_hoy)
+                grid.addWidget(cel, row, col)
+                dia_num += 1
+
+            row += 1
+            if dia_num > dias_mes:
+                break
+
+        wrapper = QWidget()
+        wrapper.setLayout(grid)
+        self._lay_cal.addWidget(wrapper)
+        self._lay_cal.addStretch()
+
+    def _celda_dia(self, dia: int, ots: list, es_hoy: bool) -> QFrame:
+        f = QFrame()
+        f.setMinimumHeight(80)
+        f.setMaximumHeight(110)
+        borde = COLOR_ACCENT_BLUE if es_hoy else COLOR_BORDER
+        bg    = f"{COLOR_BG_MEDIUM}" if not es_hoy else "#1a3a5c"
+        f.setStyleSheet(
+            f"background-color:{bg}; border-radius:5px; "
+            f"border:1px solid {borde};")
+
+        lay = QVBoxLayout(f)
+        lay.setContentsMargins(4, 3, 4, 3)
+        lay.setSpacing(2)
+
+        lbl_d = QLabel(str(dia))
+        lbl_d.setStyleSheet(
+            f"font-weight:{'900' if es_hoy else '600'}; "
+            f"font-size:{'14' if es_hoy else '12'}px; "
+            f"color:{'white' if es_hoy else COLOR_TEXT_SECONDARY}; border:none;")
+        lay.addWidget(lbl_d)
+
+        for ot in ots[:3]:
+            color = COL_TIPO.get(ot.tipo_ot, COLOR_ACCENT_BLUE)
+            lbl_ot = QLabel(f"{ot.numero[:10]}")
+            lbl_ot.setStyleSheet(
+                f"background-color:{color}; color:white; border-radius:2px; "
+                f"padding:1px 4px; font-size:10px; font-weight:600; border:none;")
+            lbl_ot.setToolTip(
+                f"{ot.numero} - {ot.tipo_ot}\n"
+                f"Estado: {ot.estado}")
+            lay.addWidget(lbl_ot)
+
+        if len(ots) > 3:
+            lbl_m = QLabel(f"+{len(ots)-3} mas")
+            lbl_m.setStyleSheet(
+                f"color:{COLOR_TEXT_SECONDARY}; font-size:10px; border:none;")
+            lay.addWidget(lbl_m)
+
+        lay.addStretch()
+
+        # Click para ver OTs del dia
+        f.mousePressEvent = lambda e, d=dia, o=ots: self._click_dia(d, o)
+        return f
+
+    def _click_dia(self, dia: int, ots: list):
+        fecha_str = f"{dia:02d}/{self._mes:02d}/{self._anio}"
+        self.lbl_dia_sel.setText(f"Fecha: {fecha_str} ({len(ots)} OT(s))")
+        self.tabla_dia.setRowCount(0)
+        for ot in ots:
+            r = self.tabla_dia.rowCount()
+            self.tabla_dia.insertRow(r)
+            try: eq = ot.equipo.nombre[:14] if ot.equipo else "-"
+            except: eq = "-"
+            for c, v in enumerate([ot.numero, eq, ot.estado]):
+                item = QTableWidgetItem(v)
+                if c == 2:
+                    col = COL_ESTADO.get(ot.estado, "#FFF")
+                    item.setForeground(QColor(col))
+                    f2 = QFont(); f2.setBold(True); item.setFont(f2)
+                self.tabla_dia.setItem(r, c, item)
+
+    # -----------------------------------------------------------------
+    # Vista lista
+    # -----------------------------------------------------------------
+    def _render_lista(self):
+        while self._lay_cal.count():
+            item = self._lay_cal.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
+
+        tabla = QTableWidget(0, 7)
+        tabla.setHorizontalHeaderLabels(
+            ["Numero","Equipo","Tipo","Estado","Fecha","Horario","Responsable"])
+        tabla.horizontalHeader().setStretchLastSection(True)
+        tabla.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        tabla.setAlternatingRowColors(True)
+        tabla.verticalHeader().setVisible(False)
+        tabla.setSortingEnabled(True)
+        for i, w in enumerate([110,160,100,90,90,90]):
+            tabla.setColumnWidth(i, w)
+
+        for ot in sorted(self._ots_mes,
+                         key=lambda o: o.fecha_programada or datetime.max):
+            r = tabla.rowCount(); tabla.insertRow(r)
+            try: eq = ot.equipo.nombre if ot.equipo else "-"
+            except: eq = "-"
+            try: resp = ot.responsable.nombre_completo if ot.responsable else "-"
+            except: resp = "-"
+            fecha = ot.fecha_programada.strftime("%d/%m/%Y") if ot.fecha_programada else "-"
+            horario = f"{ot.hora_inicio_prog or '-'} - {ot.hora_fin_prog or '-'}"
+            vals = [ot.numero, eq, ot.tipo_ot, ot.estado, fecha, horario, resp]
+            for c, v in enumerate(vals):
+                item = QTableWidgetItem(str(v))
+                if c == 1:  # tipo color
+                    item.setForeground(
+                        QColor(COL_TIPO.get(ot.tipo_ot, "#FFF")))
+                elif c == 3:  # estado color
+                    item.setForeground(
+                        QColor(COL_ESTADO.get(ot.estado, "#FFF")))
+                    ff = QFont(); ff.setBold(True); item.setFont(ff)
+                tabla.setItem(r, c, item)
+
+        self._lay_cal.addWidget(tabla)
+
+    # -----------------------------------------------------------------
+    # Vista semanal
+    # -----------------------------------------------------------------
+    def _render_semanal(self):
+        while self._lay_cal.count():
+            item = self._lay_cal.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
+
+        # Semana actual dentro del mes
+        hoy = datetime.now()
+        if hoy.year == self._anio and hoy.month == self._mes:
+            base = hoy - timedelta(days=hoy.weekday())
+        else:
+            base = datetime(self._anio, self._mes, 1)
+            base = base - timedelta(days=base.weekday())
+
+        grid = QGridLayout(); grid.setSpacing(4)
+
+        # Cabecera
+        for col in range(7):
+            dia = base + timedelta(days=col)
+            es_hoy = (dia.date() == datetime.now().date())
+            lbl = QLabel(f"{DIAS_ES[col]}\n{dia.strftime('%d/%m')}")
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lbl.setStyleSheet(
+                f"background-color:{'#1a3a5c' if es_hoy else COLOR_BG_PANEL}; "
+                f"color:{'white' if es_hoy else COLOR_TEXT_PRIMARY}; "
+                f"font-weight:700; font-size:12px; border-radius:4px; "
+                f"padding:4px; border:1px solid {COLOR_ACCENT_BLUE if es_hoy else COLOR_BORDER};")
+            grid.addWidget(lbl, 0, col)
+
+        # Celdas
+        for col in range(7):
+            dia = base + timedelta(days=col)
+            ots_dia = [o for o in self._ots_mes
+                       if o.fecha_programada
+                       and o.fecha_programada.date() == dia.date()]
+            cel = QFrame()
+            cel.setMinimumHeight(200)
+            cel.setStyleSheet(
+                f"background-color:{COLOR_BG_MEDIUM}; border-radius:5px; "
+                f"border:1px solid {COLOR_BORDER};")
+            lay_c = QVBoxLayout(cel)
+            lay_c.setContentsMargins(4,4,4,4)
+            lay_c.setSpacing(3)
+            for ot in ots_dia:
+                color = COL_TIPO.get(ot.tipo_ot, COLOR_ACCENT_BLUE)
+                try: eq = ot.equipo.nombre[:12] if ot.equipo else "-"
+                except: eq = "-"
+                lbl_ot = QLabel(f"{ot.numero}\n{eq}\n{ot.estado}")
+                lbl_ot.setStyleSheet(
+                    f"background-color:{color}; color:white; border-radius:3px; "
+                    f"padding:3px 5px; font-size:10px; font-weight:600; border:none;")
+                lbl_ot.setWordWrap(True)
+                lay_c.addWidget(lbl_ot)
+            lay_c.addStretch()
+            grid.addWidget(cel, 1, col)
+
+        wrapper = QWidget()
+        wrapper.setLayout(grid)
+        self._lay_cal.addWidget(wrapper)
+        self._lay_cal.addStretch()
+
+    # -----------------------------------------------------------------
+    # Resumen lateral
+    # -----------------------------------------------------------------
+    def _actualizar_resumen(self):
+        total  = len(self._ots_mes)
+        prev   = sum(1 for o in self._ots_mes if o.tipo_ot in ("Preventivo","Lubricacion","Inspeccion","Predictivo"))
+        corr   = sum(1 for o in self._ots_mes if o.tipo_ot in ("Correctivo","Emergencia"))
+        cerr   = sum(1 for o in self._ots_mes if o.estado == "Cerrada")
+        proc   = sum(1 for o in self._ots_mes if o.estado == "En proceso")
+        venc   = sum(1 for o in self._ots_mes
+                     if o.estado in ("Programada","Liberada")
+                     and o.fecha_programada
+                     and o.fecha_programada < datetime.now())
+        costo  = sum(o.costo_total or 0 for o in self._ots_mes if o.estado=="Cerrada")
+
+        self.lbl_resumen.setText(
+            f"Total OTs: {total}\n"
+            f"Preventivas: {prev}\n"
+            f"Correctivas: {corr}\n"
+            f"Cerradas: {cerr}\n"
+            f"En proceso: {proc}\n"
+            f"Vencidas: {venc}\n"
+            f"Costo mes: {costo:,.2f}"
+        )
