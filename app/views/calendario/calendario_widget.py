@@ -5,12 +5,14 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QFrame, QComboBox, QTableWidget,
     QTableWidgetItem, QHeaderView, QSizePolicy,
-    QGridLayout, QScrollArea, QMessageBox, QDialog, QInputDialog
+    QGridLayout, QScrollArea, QMessageBox, QDialog, QInputDialog,
+    QLineEdit, QListWidget
 )
 from PySide6.QtCore import Qt, QDate, QTimer
 from PySide6.QtGui import QColor, QFont
 from app.services.ot_service import OTService
 from app.services.plan_service import PlanService
+from app.services.equipo_service import EquipoService
 from app.views.shared.styles import (
     COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_ACCENT_BLUE,
     COLOR_BORDER, COLOR_BG_PANEL, COLOR_BG_MEDIUM, COLOR_BG_DARK,
@@ -52,6 +54,8 @@ class CalendarioWidget(QWidget):
         self._ots_mes = []
         self._planes_mes = []
         self._uso_diario_estimado = 8.0
+        self._equipos_cache = []
+        self._actividades_plan = []
         self._construir_ui()
         QTimer.singleShot(100, self.cargar_mes)
 
@@ -191,6 +195,10 @@ class CalendarioWidget(QWidget):
     # Navegacion
     # -----------------------------------------------------------------
     def _mes_anterior(self):
+        if self.combo_vista.currentText() == "Cronograma Anual PM":
+            self._anio -= 1
+            self.cargar_mes()
+            return
         if self._mes == 1:
             self._mes = 12; self._anio -= 1
         else:
@@ -198,6 +206,10 @@ class CalendarioWidget(QWidget):
         self.cargar_mes()
 
     def _mes_siguiente(self):
+        if self.combo_vista.currentText() == "Cronograma Anual PM":
+            self._anio += 1
+            self.cargar_mes()
+            return
         if self._mes == 12:
             self._mes = 1; self._anio += 1
         else:
@@ -678,19 +690,20 @@ class CalendarioWidget(QWidget):
         planes = PlanService.listar(estado="Activo")
         planes = [p for p in planes if p.proxima_ejecucion]
 
-        tabla = QTableWidget(0, 8 + 52)
+        dias_en_anio = 366 if calendar.isleap(anio) else 365
+        tabla = QTableWidget(0, 8 + dias_en_anio)
         headers = [
             "Código", "Equipo", "Tipo", "Prioridad", "Frecuencia",
             "Inicio", "Próxima", "Estado"
-        ] + [f"S{i}" for i in range(1, 53)]
+        ] + [f"{(inicio_anio + timedelta(days=i-1)).strftime('%d/%m')}" for i in range(1, dias_en_anio + 1)]
         tabla.setHorizontalHeaderLabels(headers)
         tabla.verticalHeader().setVisible(False)
         tabla.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         tabla.setAlternatingRowColors(True)
         for i, w in enumerate([90, 170, 95, 80, 95, 80, 85, 90]):
             tabla.setColumnWidth(i, w)
-        for i in range(8, 60):
-            tabla.setColumnWidth(i, 30)
+        for i in range(8, 8 + dias_en_anio):
+            tabla.setColumnWidth(i, 24)
 
         for p in planes:
             fila = tabla.rowCount()
@@ -712,8 +725,8 @@ class CalendarioWidget(QWidget):
             for c, v in enumerate(base_vals):
                 tabla.setItem(fila, c, QTableWidgetItem(str(v)))
 
-            for sem in self._semanas_programadas_plan(p, inicio_anio, fin_anio):
-                col = 8 + sem - 1
+            for dia in self._dias_programados_plan(p, inicio_anio, fin_anio):
+                col = 8 + dia - 1
                 if 8 <= col < tabla.columnCount():
                     it = QTableWidgetItem("X")
                     it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -722,24 +735,25 @@ class CalendarioWidget(QWidget):
 
         titulo = QLabel(f"Cronograma Anual de Mantenimiento Preventivo - Año {anio}")
         titulo.setStyleSheet(f"font-size:18px; font-weight:700; color:{COLOR_TEXT_PRIMARY};")
+        self._lay_cal.addWidget(self._crear_panel_plan())
         self._lay_cal.addWidget(titulo)
         self._lay_cal.addWidget(tabla)
 
-    def _semanas_programadas_plan(self, plan, inicio: datetime, fin: datetime) -> list[int]:
+    def _dias_programados_plan(self, plan, inicio: datetime, fin: datetime) -> list[int]:
         """
-        Calcula semanas ISO programadas dentro del año según la frecuencia del plan.
+        Calcula día-del-año programado dentro del año según la frecuencia del plan.
         """
         from dateutil.relativedelta import relativedelta
 
         actual = plan.proxima_ejecucion or inicio
         unidad = (plan.unidad_frecuencia or "Dias").lower()
         freq = max(1, int(plan.frecuencia or 1))
-        semanas = set()
+        dias = set()
         guard = 0
         while actual <= fin and guard < 500:
             guard += 1
             if actual >= inicio:
-                semanas.add(min(52, max(1, actual.isocalendar()[1])))
+                dias.add(actual.timetuple().tm_yday)
             if "dia" in unidad:
                 actual += timedelta(days=freq)
             elif "sem" in unidad:
@@ -750,4 +764,139 @@ class CalendarioWidget(QWidget):
                 actual += relativedelta(years=freq)
             else:
                 actual += timedelta(days=freq)
-        return sorted(semanas)
+        return sorted(dias)
+
+    def _crear_panel_plan(self) -> QWidget:
+        panel = QFrame()
+        panel.setStyleSheet(
+            f"background-color:{COLOR_BG_PANEL}; border:1px solid {COLOR_BORDER}; border-radius:8px;")
+        lay = QVBoxLayout(panel)
+        lay.setContentsMargins(10, 8, 10, 8)
+        lay.setSpacing(8)
+
+        titulo = QLabel("Registro rápido de Plan PM (en esta misma pantalla)")
+        titulo.setStyleSheet(f"font-weight:700; color:{COLOR_TEXT_PRIMARY}; font-size:13px;")
+        lay.addWidget(titulo)
+
+        fila1 = QHBoxLayout()
+        self.inp_buscar_equipo = QLineEdit()
+        self.inp_buscar_equipo.setPlaceholderText("Buscar equipo por código o descripción...")
+        self.inp_buscar_equipo.textChanged.connect(self._filtrar_equipos_panel)
+        self.cmb_equipo_panel = QComboBox()
+        self.cmb_equipo_panel.setMinimumWidth(300)
+        self._equipos_cache = EquipoService.listar(solo_activos=True)
+        for e in self._equipos_cache:
+            self.cmb_equipo_panel.addItem(f"{e.codigo} - {e.nombre}", e.id)
+
+        self.inp_codigo_plan = QLineEdit()
+        self.inp_codigo_plan.setPlaceholderText("Código plan (auto si vacío)")
+        self.cmb_tipo_plan = QComboBox()
+        self.cmb_tipo_plan.addItems(["Preventivo", "Predictivo", "Lubricacion", "Inspeccion", "Mejora"])
+        self.cmb_prioridad_plan = QComboBox()
+        self.cmb_prioridad_plan.addItems(["Urgente", "Alta", "Normal", "Baja"])
+        self.cmb_frecuencia = QComboBox()
+        self.cmb_frecuencia.addItems(["7 Dias", "15 Dias", "30 Dias", "60 Dias", "90 Dias", "180 Dias", "365 Dias"])
+
+        fila1.addWidget(QLabel("Equipo:"))
+        fila1.addWidget(self.inp_buscar_equipo, 2)
+        fila1.addWidget(self.cmb_equipo_panel, 3)
+        fila1.addWidget(QLabel("Código:"))
+        fila1.addWidget(self.inp_codigo_plan, 2)
+        fila1.addWidget(QLabel("Tipo:"))
+        fila1.addWidget(self.cmb_tipo_plan)
+        fila1.addWidget(QLabel("Prioridad:"))
+        fila1.addWidget(self.cmb_prioridad_plan)
+        fila1.addWidget(QLabel("Frecuencia:"))
+        fila1.addWidget(self.cmb_frecuencia)
+        lay.addLayout(fila1)
+
+        fila2 = QHBoxLayout()
+        self.inp_actividad = QLineEdit()
+        self.inp_actividad.setPlaceholderText("Actividad individual...")
+        btn_add = QPushButton("Agregar actividad")
+        btn_add.clicked.connect(self._agregar_actividad_panel)
+        btn_del = QPushButton("Quitar actividad")
+        btn_del.clicked.connect(self._quitar_actividad_panel)
+        self.lst_actividades = QListWidget()
+        self.lst_actividades.setMaximumHeight(95)
+
+        botones = QVBoxLayout()
+        btn_pack = QPushButton("Paquete PM")
+        btn_pack.clicked.connect(self._boton_paquete_pm)
+        btn_reg = QPushButton("Registrar Plan")
+        btn_reg.setObjectName("btn_primary")
+        btn_reg.clicked.connect(self._registrar_plan_panel)
+        botones.addWidget(btn_pack)
+        botones.addWidget(btn_reg)
+        botones.addStretch()
+
+        fila2.addWidget(QLabel("Actividad:"))
+        fila2.addWidget(self.inp_actividad, 3)
+        fila2.addWidget(btn_add)
+        fila2.addWidget(btn_del)
+        fila2.addWidget(self.lst_actividades, 4)
+        fila2.addLayout(botones)
+        lay.addLayout(fila2)
+        return panel
+
+    def _filtrar_equipos_panel(self, texto: str):
+        texto = (texto or "").lower().strip()
+        self.cmb_equipo_panel.clear()
+        for e in self._equipos_cache:
+            cad = f"{e.codigo} {e.nombre}".lower()
+            if texto and texto not in cad:
+                continue
+            self.cmb_equipo_panel.addItem(f"{e.codigo} - {e.nombre}", e.id)
+
+    def _agregar_actividad_panel(self):
+        act = self.inp_actividad.text().strip()
+        if not act:
+            return
+        self._actividades_plan.append(act)
+        self.lst_actividades.addItem(act)
+        self.inp_actividad.clear()
+
+    def _quitar_actividad_panel(self):
+        row = self.lst_actividades.currentRow()
+        if row < 0:
+            return
+        self.lst_actividades.takeItem(row)
+        if 0 <= row < len(self._actividades_plan):
+            self._actividades_plan.pop(row)
+
+    def _boton_paquete_pm(self):
+        QMessageBox.information(
+            self, "Paquete PM",
+            "Botón preparado. En el siguiente paso implementamos la lógica de paquetes de mantenimiento.")
+
+    def _registrar_plan_panel(self):
+        equipo_id = self.cmb_equipo_panel.currentData()
+        if not equipo_id:
+            QMessageBox.warning(self, "Plan PM", "Seleccione un equipo.")
+            return
+        codigo = self.inp_codigo_plan.text().strip()
+        if not codigo:
+            codigo = f"PM-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        freq_txt = self.cmb_frecuencia.currentText().split()[0]
+        frecuencia = float(freq_txt)
+        datos = {
+            "codigo": codigo,
+            "equipo_id": equipo_id,
+            "descripcion": " / ".join(self._actividades_plan) if self._actividades_plan else "Plan PM desde cronograma",
+            "tipo_mantenimiento": self.cmb_tipo_plan.currentText(),
+            "frecuencia": frecuencia,
+            "unidad_frecuencia": "Dias",
+            "criterio": "Fecha",
+            "duracion_estimada": 2.0,
+            "prioridad": self.cmb_prioridad_plan.currentText(),
+            "criticidad": "Media",
+            "alerta_dias_anticipacion": 7,
+        }
+        checklist = [{"descripcion": a, "obligatorio": False} for a in self._actividades_plan]
+        ok, msg, _ = PlanService.crear(datos, checklist, [])
+        (QMessageBox.information if ok else QMessageBox.critical)(self, "Plan PM", msg)
+        if ok:
+            self.inp_codigo_plan.clear()
+            self._actividades_plan = []
+            self.lst_actividades.clear()
+            self.cargar_mes()

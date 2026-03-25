@@ -61,6 +61,8 @@ class MainWindow(QMainWindow):
         m_archivo.addSeparator()
         self._agregar_accion(m_archivo, "Importar desde Excel...",
                               self._importar_excel)
+        self._agregar_accion(m_archivo, "Cargar datos demo",
+                              self._cargar_datos_demo)
         self._agregar_accion(m_archivo, "Exportar datos...",
                               self._exportar_datos)
         m_archivo.addSeparator()
@@ -426,6 +428,24 @@ class MainWindow(QMainWindow):
 
     def _exportar_datos(self):
         self._mostrar_modulo("reportes")
+
+    def _cargar_datos_demo(self):
+        resp = QMessageBox.question(
+            self,
+            "Datos demo",
+            "Se cargarán registros demo de Equipos, RRHH, Materiales, Planes y OTs.\n\n¿Continuar?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+        from app.services.demo_data_service import DemoDataService
+        ok, msg = DemoDataService.cargar_datos_demo()
+        (QMessageBox.information if ok else QMessageBox.critical)(self, "Datos demo", msg)
+        if ok and "ordenes" in self._widgets_cache:
+            try:
+                self._widgets_cache["ordenes"].cargar_datos()
+            except Exception:
+                pass
 
     def _cerrar_sesion(self):
         resp = QMessageBox.question(
