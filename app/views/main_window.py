@@ -5,8 +5,8 @@ panel central dinámico y barra de estado.
 """
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QStackedWidget, QToolBar,
-    QStatusBar, QLabel, QSizePolicy, QMessageBox,
-    QFileDialog, QApplication
+    QStatusBar, QLabel, QSizePolicy, QMessageBox, QVBoxLayout,
+    QFileDialog, QApplication, QInputDialog
 )
 from PySide6.QtCore import Qt, QTimer, QSize
 from PySide6.QtGui import QAction, QIcon, QFont
@@ -61,6 +61,8 @@ class MainWindow(QMainWindow):
         m_archivo.addSeparator()
         self._agregar_accion(m_archivo, "Importar desde Excel...",
                               self._importar_excel)
+        self._agregar_accion(m_archivo, "Cargar datos demo",
+                              self._cargar_datos_demo)
         self._agregar_accion(m_archivo, "Exportar datos...",
                               self._exportar_datos)
         m_archivo.addSeparator()
@@ -142,7 +144,7 @@ class MainWindow(QMainWindow):
         botones = [
             ("[Nuevo] Nueva OT",      lambda: self._nueva_ot_rapida()),
             ("[Plan] Planes",         lambda: self._mostrar_modulo("planes")),
-            ("[OT] Equipos",        lambda: self._mostrar_modulo("equipos")),
+            ("[Eq] Equipos",          lambda: self._mostrar_modulo("equipos")),
             ("[Mat] Materiales",     lambda: self._mostrar_modulo("materiales")),
             ("[RRHH] RRHH",           lambda: self._mostrar_modulo("rrhh")),
             ("[Cal] Calendario",     lambda: self._mostrar_modulo("calendario")),
@@ -364,13 +366,86 @@ class MainWindow(QMainWindow):
             widget.restaurar_backup()
 
     def _importar_excel(self):
-        QMessageBox.information(
-            self, "Importar Excel",
-            "Use el botón 'Importar' dentro del módulo correspondiente\n"
-            "(Equipos, Materiales, RRHH, Planes).")
+        from app.services.bulk_import_service import BulkImportService
+
+        modulos = [
+            ("Equipos", "equipos"),
+            ("RRHH", "rrhh"),
+            ("Materiales", "materiales"),
+            ("Planes", "planes"),
+            ("Órdenes de trabajo", "ots"),
+        ]
+        etiqueta, ok = QInputDialog.getItem(
+            self,
+            "Importación masiva",
+            "Seleccione el módulo a importar:",
+            [m[0] for m in modulos],
+            0,
+            False
+        )
+        if not ok:
+            return
+        modulo = dict(modulos)[etiqueta]
+
+        accion, ok = QInputDialog.getItem(
+            self,
+            "Importación masiva",
+            "Acción:",
+            ["Importar desde Excel", "Descargar plantilla"],
+            0,
+            False
+        )
+        if not ok:
+            return
+
+        if accion == "Descargar plantilla":
+            ruta, _ = QFileDialog.getSaveFileName(
+                self, "Guardar plantilla", f"plantilla_{modulo}.xlsx", "Excel (*.xlsx)")
+            if not ruta:
+                return
+            ok_t, msg = BulkImportService.exportar_plantilla(modulo, ruta)
+            (QMessageBox.information if ok_t else QMessageBox.critical)(
+                self, "Plantilla", msg
+            )
+            return
+
+        ruta, _ = QFileDialog.getOpenFileName(
+            self, "Seleccionar archivo Excel", "", "Excel (*.xlsx *.xls)")
+        if not ruta:
+            return
+        ok_i, resultado = BulkImportService.importar_excel(modulo, ruta)
+        resumen = (
+            f"Insertados: {resultado.insertados}\n"
+            f"Actualizados: {resultado.actualizados}\n"
+            f"Omitidos: {resultado.omitidos}\n"
+            f"Errores: {resultado.errores}"
+        )
+        if resultado.detalle_errores:
+            resumen += "\n\nDetalle (primeros 8):\n" + "\n".join(resultado.detalle_errores[:8])
+        (QMessageBox.information if ok_i else QMessageBox.warning)(
+            self, "Importación masiva", resumen
+        )
 
     def _exportar_datos(self):
         self._mostrar_modulo("reportes")
+
+    def _cargar_datos_demo(self):
+        resp = QMessageBox.question(
+            self,
+            "Datos demo",
+            "Se cargarán registros demo de Equipos, RRHH, Materiales, Planes y OTs.\n\n¿Continuar?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+        from app.services.demo_data_service import DemoDataService
+        ok, msg = DemoDataService.cargar_datos_demo()
+        (QMessageBox.information if ok else QMessageBox.critical)(self, "Datos demo", msg)
+        if ok and "ordenes" in self._widgets_cache:
+            try:
+                self._widgets_cache["ordenes"].cargar_datos()
+            except Exception:
+                pass
 
     def _cerrar_sesion(self):
         resp = QMessageBox.question(
