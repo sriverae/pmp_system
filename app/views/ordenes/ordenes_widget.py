@@ -2,15 +2,17 @@
 Módulo Órdenes de Trabajo — Gestión completa de OTs.
 """
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
     QPushButton, QFrame, QMessageBox, QComboBox,
-    QDateEdit, QInputDialog
+    QDateEdit, QInputDialog, QDialog, QTableWidget, QTableWidgetItem,
+    QSizePolicy
 )
 from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QColor
 
 from app.views.shared.tabla_base import TablaBase
 from app.services.ot_service import OTService
+from app.services.plan_service import PlanService
 from app.core.session import session_usuario
 from app.views.shared.styles import (
     COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_ACCENT_BLUE,
@@ -53,27 +55,31 @@ class OrdenesWidget(QWidget):
         layout.addWidget(lbl)
 
         # -- Barra de filtros ----------------------------------------------
-        filtros = QHBoxLayout()
-        filtros.setSpacing(8)
+        filtros = QGridLayout()
+        filtros.setHorizontalSpacing(8)
+        filtros.setVerticalSpacing(6)
 
         self.combo_estado = QComboBox()
         self.combo_estado.addItems(
             ["Todos", "Borrador", "Programada", "Liberada",
-             "En proceso", "Cerrada", "Anulada"])
-        self.combo_estado.setFixedWidth(120)
+             "En proceso", "Cerrada", "Anulada", "No programada"])
+        self.combo_estado.setMinimumWidth(120)
+        self.combo_estado.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.combo_estado.currentIndexChanged.connect(self.cargar_datos)
 
         self.combo_tipo = QComboBox()
         self.combo_tipo.addItems(
             ["Todos los tipos", "Preventivo", "Correctivo",
              "Inspección", "Predictivo", "Emergencia", "Mejora"])
-        self.combo_tipo.setFixedWidth(140)
+        self.combo_tipo.setMinimumWidth(140)
+        self.combo_tipo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.combo_tipo.currentIndexChanged.connect(self.cargar_datos)
 
         self.combo_prioridad = QComboBox()
         self.combo_prioridad.addItems(
             ["Toda prioridad", "Urgente", "Alta", "Normal", "Baja"])
-        self.combo_prioridad.setFixedWidth(130)
+        self.combo_prioridad.setMinimumWidth(130)
+        self.combo_prioridad.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.combo_prioridad.currentIndexChanged.connect(self.cargar_datos)
 
         lbl_desde = QLabel("Desde:")
@@ -82,7 +88,7 @@ class OrdenesWidget(QWidget):
         self.fecha_desde = QDateEdit()
         self.fecha_desde.setDate(QDate.currentDate().addDays(-30))
         self.fecha_desde.setCalendarPopup(True)
-        self.fecha_desde.setFixedWidth(110)
+        self.fecha_desde.setMinimumWidth(110)
         self.fecha_desde.dateChanged.connect(self.cargar_datos)
 
         lbl_hasta = QLabel("Hasta:")
@@ -90,25 +96,27 @@ class OrdenesWidget(QWidget):
         self.fecha_hasta = QDateEdit()
         self.fecha_hasta.setDate(QDate.currentDate().addDays(60))
         self.fecha_hasta.setCalendarPopup(True)
-        self.fecha_hasta.setFixedWidth(110)
+        self.fecha_hasta.setMinimumWidth(110)
         self.fecha_hasta.dateChanged.connect(self.cargar_datos)
 
         self.lbl_conteo = QLabel("0 OTs")
         self.lbl_conteo.setStyleSheet(
             f"color: {COLOR_TEXT_SECONDARY}; font-size: 12px;")
 
-        filtros.addWidget(QLabel("Estado:"))
-        filtros.addWidget(self.combo_estado)
-        filtros.addWidget(QLabel("Tipo:"))
-        filtros.addWidget(self.combo_tipo)
-        filtros.addWidget(QLabel("Prioridad:"))
-        filtros.addWidget(self.combo_prioridad)
-        filtros.addWidget(lbl_desde)
-        filtros.addWidget(self.fecha_desde)
-        filtros.addWidget(lbl_hasta)
-        filtros.addWidget(self.fecha_hasta)
-        filtros.addStretch()
-        filtros.addWidget(self.lbl_conteo)
+        filtros.addWidget(QLabel("Estado:"), 0, 0)
+        filtros.addWidget(self.combo_estado, 0, 1)
+        filtros.addWidget(QLabel("Tipo:"), 0, 2)
+        filtros.addWidget(self.combo_tipo, 0, 3)
+        filtros.addWidget(QLabel("Prioridad:"), 0, 4)
+        filtros.addWidget(self.combo_prioridad, 0, 5)
+        filtros.addWidget(lbl_desde, 1, 0)
+        filtros.addWidget(self.fecha_desde, 1, 1)
+        filtros.addWidget(lbl_hasta, 1, 2)
+        filtros.addWidget(self.fecha_hasta, 1, 3)
+        filtros.addWidget(self.lbl_conteo, 1, 5, alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        filtros.setColumnStretch(1, 1)
+        filtros.setColumnStretch(3, 1)
+        filtros.setColumnStretch(5, 1)
         layout.addLayout(filtros)
 
         # -- Tabla ---------------------------------------------------------
@@ -125,44 +133,49 @@ class OrdenesWidget(QWidget):
         btn_frame.setStyleSheet(
             f"background-color: {COLOR_BG_PANEL}; border-radius: 6px; "
             f"border: 1px solid {COLOR_BORDER}; padding: 6px;")
-        btn_lay = QHBoxLayout(btn_frame)
+        btn_lay = QVBoxLayout(btn_frame)
         btn_lay.setSpacing(6)
+        fila_superior = QGridLayout()
+        fila_superior.setHorizontalSpacing(6)
+        fila_superior.setVerticalSpacing(6)
+        fila_inferior = QGridLayout()
+        fila_inferior.setHorizontalSpacing(6)
+        fila_inferior.setVerticalSpacing(6)
 
         botones_izq = [
-            ("[+] Nueva OT",     self.abrir_nueva_ot,   "primary"),
-            ("[Edit] Editar",        self._editar,          "normal"),
-            ("[Aud] Ver detalle",  self._ver_detalle_btn, "normal"),
+            ("Nueva OT",        self.abrir_nueva_ot,   "primary"),
+            ("Editar",          self._editar,          "normal"),
+            ("Ver detalle",     self._ver_detalle_btn, "normal"),
         ]
         botones_estado = [
-            ("[OK] Liberar",       self._liberar,  "success"),
-            ("[Ini] Iniciar",        self._iniciar,  "normal"),
-            ("[Act] Reprogramar",   self._reprogramar, "normal"),
-            ("[Cerr] Cerrar OT",    self._cerrar,   "success"),
-            ("[X] Anular",        self._anular,   "danger"),
+            ("Liberar",         self._liberar,  "success"),
+            ("Iniciar",         self._iniciar,  "normal"),
+            ("Reprogramar",     self._reprogramar, "normal"),
+            ("Cerrar OT",       self._cerrar,   "success"),
+            ("Anular",          self._anular,   "danger"),
         ]
         botones_der = [
-            ("[Adj] Adjuntos",  self._adjuntos, "normal"),
-            ("[Hist] Historial", self._historial_ot, "normal"),
-            ("[Rep] Imprimir",  self._imprimir, "normal"),
-            ("[Exp] Exportar",  self._exportar, "normal"),
+            ("Alertas OT",      self._alertas_ot, "warning"),
+            ("Adjuntos",        self._adjuntos, "normal"),
+            ("Historial",       self._historial_ot, "normal"),
+            ("Imprimir",        self._imprimir, "normal"),
+            ("Exportar",        self._exportar, "normal"),
         ]
 
-        for texto, cb, est in botones_izq:
-            btn_lay.addWidget(self._btn(texto, cb, est))
+        for i, (texto, cb, est) in enumerate(botones_izq):
+            fila_superior.addWidget(self._btn(texto, cb, est), 0, i)
 
-        sep1 = self._separador()
-        btn_lay.addWidget(sep1)
+        base_col = len(botones_izq)
+        for i, (texto, cb, est) in enumerate(botones_estado):
+            fila_superior.addWidget(self._btn(texto, cb, est), 0, base_col + i)
 
-        for texto, cb, est in botones_estado:
-            btn_lay.addWidget(self._btn(texto, cb, est))
+        for i, (texto, cb, est) in enumerate(botones_der):
+            fila_inferior.addWidget(self._btn(texto, cb, est), 0, i)
 
-        sep2 = self._separador()
-        btn_lay.addWidget(sep2)
-
-        for texto, cb, est in botones_der:
-            btn_lay.addWidget(self._btn(texto, cb, est))
-
-        btn_lay.addStretch()
+        fila_superior.setColumnStretch(base_col + len(botones_estado), 1)
+        fila_inferior.setColumnStretch(len(botones_der), 1)
+        btn_lay.addLayout(fila_superior)
+        btn_lay.addLayout(fila_inferior)
         layout.addWidget(btn_frame)
 
         # Ocultar botones de edición en modo historial
@@ -173,6 +186,8 @@ class OrdenesWidget(QWidget):
     def _btn(self, texto, callback, estilo="normal") -> QPushButton:
         b = QPushButton(texto)
         b.setFixedHeight(30)
+        b.setMinimumWidth(112)
+        b.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         estilos = {
             "primary": f"background-color: {COLOR_ACCENT_BLUE}; color: white; "
                        f"border-radius: 4px; border: none; padding: 0 10px; font-size: 12px;",
@@ -221,6 +236,12 @@ class OrdenesWidget(QWidget):
             filtros["estado"] = "Cerrada"
 
         ots = OTService.listar_ots(filtros)
+        incluir_no_programadas = estado in ("Todos", "No programada")
+        planes_no_programados = []
+        if incluir_no_programadas:
+            planes_no_programados = PlanService.obtener_planes_no_programados(
+                filtros["fecha_desde"], filtros["fecha_hasta"]
+            )
 
         datos = []
         ids = []
@@ -243,8 +264,24 @@ class OrdenesWidget(QWidget):
             })
             ids.append(ot.id)
 
+        for p in planes_no_programados:
+            datos.append({
+                "numero": f"PLAN-{p['codigo_plan']}",
+                "tipo_ot": p["tipo_ot"],
+                "equipo": p["equipo"],
+                "fecha_prog": p["fecha_programada"].strftime("%d/%m/%Y") if p["fecha_programada"] else "-",
+                "hora_ini": "-",
+                "hora_fin": "-",
+                "prioridad": p["prioridad"],
+                "responsable": "-",
+                "estado": "No programada",
+                "costo_total": "-",
+            })
+            ids.append(0)
+
         self.tabla.cargar(datos, ids)
-        self.lbl_conteo.setText(f"{len(ots)} OT(s)")
+        self.lbl_conteo.setText(
+            f"{len(ots)} OT(s) + {len(planes_no_programados)} No programada(s)")
 
     def _on_seleccion(self, ot_id: int):
         pass  # Se puede mostrar un panel de detalle lateral
@@ -501,3 +538,43 @@ class OrdenesWidget(QWidget):
             QMessageBox.information(self, "Exportar", f"Exportado: {ruta}")
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
+
+    def _alertas_ot(self):
+        alertas = OTService.obtener_alertas_ordenes_programadas()
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Alertas de Órdenes de Trabajo")
+        dlg.resize(820, 420)
+        lay = QVBoxLayout(dlg)
+        lbl = QLabel(f"OTs en alerta: {len(alertas)}")
+        lbl.setStyleSheet(f"font-weight:700; color:{COLOR_TEXT_PRIMARY};")
+        lay.addWidget(lbl)
+
+        tabla = QTableWidget(0, 7)
+        tabla.setHorizontalHeaderLabels(
+            ["OT", "Equipo", "Tipo", "Estado", "Fecha Programada", "Días Restantes", "Anticipación"]
+        )
+        tabla.horizontalHeader().setStretchLastSection(True)
+        tabla.verticalHeader().setVisible(False)
+        tabla.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        for i, w in enumerate([110, 180, 100, 100, 130, 110]):
+            tabla.setColumnWidth(i, w)
+
+        for a in alertas:
+            r = tabla.rowCount()
+            tabla.insertRow(r)
+            vals = [
+                a["numero"], a["equipo"], a["tipo_ot"], a["estado"],
+                a["fecha_programada"].strftime("%d/%m/%Y"),
+                str(a["dias_restantes"]), f"{a['dias_alerta']} día(s)"
+            ]
+            for c, v in enumerate(vals):
+                it = QTableWidgetItem(v)
+                if c == 5 and int(a["dias_restantes"]) <= 0:
+                    it.setForeground(QColor(COLOR_DANGER))
+                tabla.setItem(r, c, it)
+        lay.addWidget(tabla)
+
+        btn = QPushButton("Cerrar")
+        btn.clicked.connect(dlg.accept)
+        lay.addWidget(btn, alignment=Qt.AlignmentFlag.AlignRight)
+        dlg.exec()

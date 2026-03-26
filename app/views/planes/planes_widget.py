@@ -2,12 +2,12 @@
 Modulo Planes de Mantenimiento - completo.
 """
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
     QPushButton, QFrame, QMessageBox, QComboBox,
     QDialog, QFormLayout, QLineEdit, QDoubleSpinBox,
     QSpinBox, QTextEdit, QComboBox, QTabWidget,
     QTableWidget, QTableWidgetItem, QHeaderView,
-    QDateEdit, QCheckBox
+    QDateEdit, QCheckBox, QSizePolicy
 )
 from PySide6.QtCore import Qt, QDate
 from app.views.shared.tabla_base import TablaBase
@@ -49,18 +49,25 @@ class PlanesWidget(QWidget):
         lay.addLayout(enc)
 
         # Filtros
-        fil = QHBoxLayout(); fil.setSpacing(8)
+        fil = QGridLayout()
+        fil.setHorizontalSpacing(8)
+        fil.setVerticalSpacing(6)
         self.combo_estado = QComboBox()
         self.combo_estado.addItems(["Todos","Activo","Pausado","Inactivo"])
-        self.combo_estado.setFixedWidth(110)
+        self.combo_estado.setMinimumWidth(110)
+        self.combo_estado.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.combo_estado.currentIndexChanged.connect(self.cargar_datos)
         self.combo_tipo = QComboBox()
         self.combo_tipo.addItems(["Todos los tipos","Preventivo","Predictivo","Lubricacion","Inspeccion"])
-        self.combo_tipo.setFixedWidth(140)
+        self.combo_tipo.setMinimumWidth(150)
+        self.combo_tipo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.combo_tipo.currentIndexChanged.connect(self.cargar_datos)
-        fil.addWidget(QLabel("Estado:")); fil.addWidget(self.combo_estado)
-        fil.addWidget(QLabel("Tipo:")); fil.addWidget(self.combo_tipo)
-        fil.addStretch()
+        fil.addWidget(QLabel("Estado:"), 0, 0)
+        fil.addWidget(self.combo_estado, 0, 1)
+        fil.addWidget(QLabel("Tipo:"), 0, 2)
+        fil.addWidget(self.combo_tipo, 0, 3)
+        fil.setColumnStretch(1, 1)
+        fil.setColumnStretch(3, 2)
         lay.addLayout(fil)
 
         self.tabla = TablaBase(columnas=COLS, columna_estado="estado")
@@ -69,8 +76,10 @@ class PlanesWidget(QWidget):
 
         btn_frame = QFrame()
         btn_frame.setStyleSheet(f"background-color:{COLOR_BG_PANEL}; border-radius:6px; border:1px solid {COLOR_BORDER}; padding:6px;")
-        bl = QHBoxLayout(btn_frame); bl.setSpacing(6)
-        for txt, cb, est in [
+        bl = QGridLayout(btn_frame)
+        bl.setHorizontalSpacing(6)
+        bl.setVerticalSpacing(6)
+        botones = [
             ("+ Nuevo Plan",       self._nuevo,      "primary"),
             ("Editar",             self._editar,     "normal"),
             ("Ver Detalle",        self._ver_detalle_btn, "normal"),
@@ -79,14 +88,21 @@ class PlanesWidget(QWidget):
             ("Duplicar",           self._duplicar,   "normal"),
             ("Generar OTs ahora",  self._gen_ots,    "primary"),
             ("Exportar",           self._exportar,   "normal"),
-        ]:
-            b = QPushButton(txt); b.setFixedHeight(30)
+        ]
+        for i, (txt, cb, est) in enumerate(botones):
+            fila = i // 4
+            col = i % 4
+            b = QPushButton(txt)
+            b.setFixedHeight(30)
+            b.setMinimumWidth(130)
+            b.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             if est == "primary":
                 b.setStyleSheet(f"background-color:{COLOR_ACCENT_BLUE}; color:white; border-radius:4px; border:none; padding:0 10px; font-size:12px; font-weight:600;")
             elif est == "success":
                 b.setStyleSheet(f"background-color:#2E7D32; color:white; border-radius:4px; border:none; padding:0 10px; font-size:12px;")
-            b.clicked.connect(cb); bl.addWidget(b)
-        bl.addStretch()
+            b.clicked.connect(cb)
+            bl.addWidget(b, fila, col)
+        bl.setColumnStretch(4, 1)
         lay.addWidget(btn_frame)
 
     def cargar_datos(self):
@@ -141,6 +157,7 @@ class PlanesWidget(QWidget):
                 f"Codigo: {p.codigo}\nEquipo: {eq}\nTipo: {p.tipo_mantenimiento}\n"
                 f"Frecuencia: {p.frecuencia} {p.unidad_frecuencia}\nCriterio: {p.criterio}\n"
                 f"Duracion estimada: {p.duracion_estimada} h\nPrioridad: {p.prioridad}\n"
+                f"Alerta anticipada: {int(p.alerta_dias_anticipacion or 7)} dia(s)\n"
                 f"Estado: {p.estado}\nProxima ejecucion: "
                 f"{p.proxima_ejecucion.strftime('%d/%m/%Y') if p.proxima_ejecucion else '-'}\n"
                 f"Descripcion: {p.descripcion or '-'}")
@@ -222,7 +239,12 @@ class PlanForm(QDialog):
         tabs = QTabWidget()
 
         # Tab 1: Datos generales
-        t1 = QWidget(); f1 = QFormLayout(t1); f1.setSpacing(9); f1.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        t1 = QWidget()
+        f1 = QFormLayout(t1)
+        f1.setSpacing(9)
+        f1.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+        f1.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        f1.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self.inp_codigo = QLineEdit(); self.inp_codigo.setPlaceholderText("Ej: PM-001")
         self.combo_equipo = QComboBox()
         self._cargar_equipos()
@@ -235,6 +257,7 @@ class PlanForm(QDialog):
         self.combo_criterio = QComboBox()
         self.combo_criterio.addItems(["Fecha","Contador","Ambos"])
         self.inp_duracion = QDoubleSpinBox(); self.inp_duracion.setRange(0.1,999); self.inp_duracion.setValue(2); self.inp_duracion.setSuffix(" horas")
+        self.inp_alerta_dias = QSpinBox(); self.inp_alerta_dias.setRange(0, 120); self.inp_alerta_dias.setValue(7)
         self.combo_prioridad = QComboBox()
         self.combo_prioridad.addItems(["Urgente","Alta","Normal","Baja"]); self.combo_prioridad.setCurrentText("Normal")
         self.combo_criticidad = QComboBox()
@@ -250,6 +273,7 @@ class PlanForm(QDialog):
         f1.addRow("Unidad frecuencia:", self.combo_unidad)
         f1.addRow("Criterio:", self.combo_criterio)
         f1.addRow("Duracion estimada:", self.inp_duracion)
+        f1.addRow("Alerta anticipada (dias):", self.inp_alerta_dias)
         f1.addRow("Prioridad:", self.combo_prioridad)
         f1.addRow("Criticidad:", self.combo_criticidad)
         f1.addRow("Procedimiento:", self.inp_procedimiento)
@@ -287,6 +311,7 @@ class PlanForm(QDialog):
             self.combo_unidad.setCurrentText(p.unidad_frecuencia)
             self.combo_criterio.setCurrentText(p.criterio)
             self.inp_duracion.setValue(p.duracion_estimada or 1)
+            self.inp_alerta_dias.setValue(int(p.alerta_dias_anticipacion or 7))
             self.combo_prioridad.setCurrentText(p.prioridad)
             self.combo_criticidad.setCurrentText(p.criticidad or "Media")
             self.inp_procedimiento.setPlainText(p.procedimiento or "")
@@ -302,6 +327,7 @@ class PlanForm(QDialog):
             "unidad_frecuencia":   self.combo_unidad.currentText(),
             "criterio":            self.combo_criterio.currentText(),
             "duracion_estimada":   self.inp_duracion.value(),
+            "alerta_dias_anticipacion": self.inp_alerta_dias.value(),
             "prioridad":           self.combo_prioridad.currentText(),
             "criticidad":          self.combo_criticidad.currentText(),
             "procedimiento":       self.inp_procedimiento.toPlainText().strip(),
@@ -313,7 +339,9 @@ class PlanForm(QDialog):
             try:
                 p = session.query(PlanMantenimiento).get(self.plan_id)
                 for k, v in datos.items():
-                    if k not in ("codigo","equipo_id") and v:
+                    if k in ("codigo", "equipo_id"):
+                        continue
+                    if v is not None:
                         setattr(p, k, v)
                 session.commit()
                 QMessageBox.information(self,"OK","Plan actualizado.")
