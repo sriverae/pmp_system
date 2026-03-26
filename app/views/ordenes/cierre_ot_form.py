@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QDate, QTime
 from PySide6.QtGui import QColor
+from sqlalchemy.orm import joinedload
 
 from app.core.database import get_session
 from app.models.orden_trabajo import OrdenTrabajo, OTMaterialConsumido
@@ -42,7 +43,9 @@ class CierreOTForm(QDialog):
     def _cargar_ot(self):
         session = get_session()
         try:
-            ot = session.query(OrdenTrabajo).get(self.ot_id)
+            ot = (session.query(OrdenTrabajo)
+                  .options(joinedload(OrdenTrabajo.equipo))
+                  .get(self.ot_id))
             if ot:
                 session.expunge(ot)
             return ot

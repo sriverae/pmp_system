@@ -1,24 +1,24 @@
 """
-Estilos globales QSS — Tema Industrial PMP.
-Paleta: azul oscuro, gris acero, acentos verdes/amarillo/rojo.
+Estilos globales QSS — Tema "Vivid Pulse" PMP.
+Paleta de alto contraste con acentos energéticos.
 """
 
 # Colores principales
-COLOR_BG_DARK = "#1a2332"
-COLOR_BG_MEDIUM = "#1e2d3d"
-COLOR_BG_LIGHT = "#243447"
-COLOR_BG_PANEL = "#2a3f55"
-COLOR_ACCENT_BLUE = "#2196F3"
-COLOR_ACCENT_BLUE_DARK = "#1565C0"
-COLOR_TEXT_PRIMARY = "#e8edf2"
-COLOR_TEXT_SECONDARY = "#9aabb8"
-COLOR_BORDER = "#344d63"
+COLOR_BG_DARK = "#0B1024"
+COLOR_BG_MEDIUM = "#181F45"
+COLOR_BG_LIGHT = "#252F64"
+COLOR_BG_PANEL = "#1D2652"
+COLOR_ACCENT_BLUE = "#00E5FF"
+COLOR_ACCENT_BLUE_DARK = "#00B8D4"
+COLOR_TEXT_PRIMARY = "#F8FAFF"
+COLOR_TEXT_SECONDARY = "#C4CEF9"
+COLOR_BORDER = "#41539A"
 
 # Colores de estado
-COLOR_SUCCESS = "#4CAF50"    # Verde — correcto / disponible / cerrado
-COLOR_WARNING = "#FF9800"    # Amarillo — advertencia / próximo vencimiento
-COLOR_DANGER = "#F44336"     # Rojo — conflicto / crítico / vencido
-COLOR_INFO = "#2196F3"       # Azul — informativo
+COLOR_SUCCESS = "#6DFF67"    # Verde neón
+COLOR_WARNING = "#FFB020"    # Naranja vivo
+COLOR_DANGER = "#FF5C8A"     # Rosa coral
+COLOR_INFO = "#00E5FF"       # Aqua brillante
 
 STYLESHEET_GLOBAL = f"""
 /* ===========================================================
@@ -28,7 +28,7 @@ QWidget {{
     background-color: {COLOR_BG_DARK};
     color: {COLOR_TEXT_PRIMARY};
     font-family: "Segoe UI", Arial, sans-serif;
-    font-size: 13px;
+    font-size: 12px;
 }}
 
 QMainWindow {{
@@ -49,7 +49,8 @@ QMenuBar::item {{
     border-radius: 3px;
 }}
 QMenuBar::item:selected {{
-    background-color: {COLOR_ACCENT_BLUE};
+    background-color: #2C3D73;
+    color: #E2FDFF;
 }}
 QMenu {{
     background-color: {COLOR_BG_PANEL};
@@ -62,7 +63,8 @@ QMenu::item {{
     border-radius: 2px;
 }}
 QMenu::item:selected {{
-    background-color: {COLOR_ACCENT_BLUE};
+    background-color: #2C3D73;
+    color: #E2FDFF;
 }}
 QMenu::separator {{
     height: 1px;
@@ -88,8 +90,8 @@ QToolButton {{
     font-size: 12px;
 }}
 QToolButton:hover {{
-    background-color: {COLOR_BG_PANEL};
-    border-color: {COLOR_ACCENT_BLUE};
+    background-color: #23345D;
+    border-color: {COLOR_ACCENT_BLUE_DARK};
 }}
 QToolButton:pressed {{
     background-color: {COLOR_ACCENT_BLUE};
@@ -99,16 +101,16 @@ QToolButton:pressed {{
    BOTONES
 =========================================================== */
 QPushButton {{
-    background-color: {COLOR_BG_PANEL};
+    background-color: {COLOR_BG_LIGHT};
     color: {COLOR_TEXT_PRIMARY};
     border: 1px solid {COLOR_BORDER};
-    border-radius: 4px;
-    padding: 7px 16px;
+    border-radius: 8px;
+    padding: 6px 12px;
     font-weight: 500;
-    min-height: 30px;
+    min-height: 28px;
 }}
 QPushButton:hover {{
-    background-color: {COLOR_ACCENT_BLUE};
+    background-color: #31408B;
     border-color: {COLOR_ACCENT_BLUE};
 }}
 QPushButton:pressed {{
@@ -122,23 +124,25 @@ QPushButton:disabled {{
 
 QPushButton#btn_primary {{
     background-color: {COLOR_ACCENT_BLUE};
-    border-color: {COLOR_ACCENT_BLUE};
-    font-weight: 600;
+    border-color: {COLOR_ACCENT_BLUE_DARK};
+    color: #062333;
+    font-weight: 700;
 }}
 QPushButton#btn_primary:hover {{
-    background-color: #42A5F5;
+    background-color: #67E8F9;
 }}
 
 QPushButton#btn_success {{
-    background-color: #2E7D32;
-    border-color: #388E3C;
+    background-color: #166534;
+    border-color: #22C55E;
 }}
 QPushButton#btn_success:hover {{
-    background-color: {COLOR_SUCCESS};
+    background-color: #22C55E;
+    color: #06220F;
 }}
 
 QPushButton#btn_danger {{
-    background-color: #C62828;
+    background-color: #9F1239;
     border-color: {COLOR_DANGER};
 }}
 QPushButton#btn_danger:hover {{
@@ -146,9 +150,9 @@ QPushButton#btn_danger:hover {{
 }}
 
 QPushButton#btn_warning {{
-    background-color: #E65100;
+    background-color: #B45309;
     border-color: {COLOR_WARNING};
-    color: white;
+    color: #FFF8EB;
 }}
 
 /* ===========================================================
@@ -159,7 +163,7 @@ QDoubleSpinBox, QDateEdit, QTimeEdit, QDateTimeEdit {{
     background-color: {COLOR_BG_MEDIUM};
     color: {COLOR_TEXT_PRIMARY};
     border: 1px solid {COLOR_BORDER};
-    border-radius: 4px;
+    border-radius: 8px;
     padding: 6px 8px;
     selection-background-color: {COLOR_ACCENT_BLUE};
 }}
@@ -177,7 +181,7 @@ QComboBox {{
     background-color: {COLOR_BG_MEDIUM};
     color: {COLOR_TEXT_PRIMARY};
     border: 1px solid {COLOR_BORDER};
-    border-radius: 4px;
+    border-radius: 8px;
     padding: 6px 8px;
     min-height: 28px;
 }}
@@ -203,7 +207,7 @@ QTableWidget, QTableView {{
     color: {COLOR_TEXT_PRIMARY};
     gridline-color: {COLOR_BORDER};
     border: 1px solid {COLOR_BORDER};
-    border-radius: 4px;
+    border-radius: 8px;
     selection-background-color: {COLOR_ACCENT_BLUE};
     alternate-background-color: {COLOR_BG_LIGHT};
 }}
@@ -216,7 +220,7 @@ QTableWidget::item:selected {{
     color: white;
 }}
 QHeaderView::section {{
-    background-color: {COLOR_BG_PANEL};
+    background-color: #2A3E7D;
     color: {COLOR_TEXT_PRIMARY};
     border: none;
     border-right: 1px solid {COLOR_BORDER};
@@ -228,7 +232,7 @@ QHeaderView::section {{
     letter-spacing: 0.5px;
 }}
 QHeaderView::section:hover {{
-    background-color: {COLOR_ACCENT_BLUE};
+    background-color: #35508B;
 }}
 
 /* ===========================================================
@@ -251,7 +255,7 @@ QTabBar::tab {{
 QTabBar::tab:selected {{
     background-color: {COLOR_BG_MEDIUM};
     color: {COLOR_TEXT_PRIMARY};
-    border-bottom: 2px solid {COLOR_ACCENT_BLUE};
+    border-bottom: 2px solid #A78BFA;
 }}
 QTabBar::tab:hover {{
     background-color: {COLOR_BG_LIGHT};
@@ -272,7 +276,7 @@ QScrollBar::handle:vertical {{
     min-height: 30px;
 }}
 QScrollBar::handle:vertical:hover {{
-    background-color: {COLOR_ACCENT_BLUE};
+    background-color: #8B5CF6;
 }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0px;
@@ -305,7 +309,7 @@ QLabel#label_subtitulo {{
 QLabel#kpi_valor {{
     font-size: 28px;
     font-weight: 700;
-    color: {COLOR_ACCENT_BLUE};
+    color: #22F0FF;
 }}
 QLabel#kpi_titulo {{
     font-size: 11px;
@@ -320,31 +324,31 @@ QLabel#kpi_titulo {{
 QFrame#card_kpi {{
     background-color: {COLOR_BG_PANEL};
     border: 1px solid {COLOR_BORDER};
-    border-radius: 8px;
+    border-radius: 12px;
     padding: 12px;
 }}
 QFrame#card_kpi_success {{
     background-color: {COLOR_BG_PANEL};
     border: 1px solid {COLOR_SUCCESS};
-    border-radius: 8px;
+    border-radius: 12px;
     border-left: 4px solid {COLOR_SUCCESS};
 }}
 QFrame#card_kpi_warning {{
     background-color: {COLOR_BG_PANEL};
     border: 1px solid {COLOR_WARNING};
-    border-radius: 8px;
+    border-radius: 12px;
     border-left: 4px solid {COLOR_WARNING};
 }}
 QFrame#card_kpi_danger {{
     background-color: {COLOR_BG_PANEL};
     border: 1px solid {COLOR_DANGER};
-    border-radius: 8px;
+    border-radius: 12px;
     border-left: 4px solid {COLOR_DANGER};
 }}
 QFrame#card_kpi_info {{
     background-color: {COLOR_BG_PANEL};
     border: 1px solid {COLOR_ACCENT_BLUE};
-    border-radius: 8px;
+    border-radius: 12px;
     border-left: 4px solid {COLOR_ACCENT_BLUE};
 }}
 
@@ -478,6 +482,7 @@ COLORES_ESTADO_TABLA = {
     "Vencida":   ("#B71C1C", "#FFEBEE"),   # rojo
     "Dado de baja": ("#B71C1C", "#FFEBEE"),
     "Programada": ("#1a2332", "#E3F2FD"),  # neutro
+    "No programada": ("#6D4C41", "#EFEBE9"),
     "Borrador":  ("#263238", "#ECEFF1"),
     "Anulada":   ("#37474F", "#ECEFF1"),
     "Pausado":   ("#4A148C", "#F3E5F5"),
